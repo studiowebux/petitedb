@@ -1,0 +1,13 @@
+{
+  "name": "@studiowebux/petitedb",
+  "version": "1.0.0",
+  "exports": "./src/mod.ts",
+  "publish": {
+    "include": ["LICENSE", "README.md", "src/**/*.ts"],
+    "exclude": ["tests/", ".github/"]
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.8",
+    "@std/fs": "jsr:@std/fs@^1.0.5"
+  }
+}
