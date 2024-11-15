@@ -4,7 +4,7 @@
 
 [![JSR](https://jsr.io/badges/@studiowebux/petitedb)](https://jsr.io/@studiowebux/petitedb)
 
-<p>The minimalistic NoSQL in-memory database</p>
+<p>The minimalistic NoSQL in-memory/on-disk database</p>
 
 <p align="center">
   <a href="https://github.com/studiowebux/petitedb/issues">Report Bug</a>
@@ -17,13 +17,10 @@
 
 ## About
 
-Simple JSON database in-memory and persist data into a JSON file.
-Implement basics operations such as, `create`, `upsert`, `update`, `delete`, `read`, `find`.
-
 * Manage data in memory
-* Store and load data securely to/from JSON files
+* Store and load data securely to/from a JSON file
 * Core operations:
-	+ Create, update, Upsert, delete records
+	+ Create, update, upsert, delete records
 	+ Read and find specific records
 * Ideal for test and offline applications
 
