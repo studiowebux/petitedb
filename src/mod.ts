@@ -1,4 +1,4 @@
-import * as fs from "@std/fs";
+import { existsSync } from "@std/fs";
 
 // deno-lint-ignore no-explicit-any
 type RecordType = Record<string, any>;
@@ -14,16 +14,38 @@ export class PetiteDB {
   private data: DatabaseType;
   private lock: boolean;
 
+  private autoId: boolean;
+  private autoSave: boolean;
+
   /**
    * Constructs a new instance of PetiteDB with the given file path.
    *
    * @param {string} filePath - The file path for the database file.
+   * @param {Object} options - Optional configuration options for the database.
+   * @param {boolean} [options.autoSave=true] - If true, the database will be saved automatically after each operation.
+   * @param {boolean} [options.autoId=false] - If true, a unique identifier will be generated automatically.
+   *
+   * @class PetiteDB
    */
-  constructor(filePath: string) {
+  constructor(
+    filePath: string,
+    options?: { autoSave: boolean; autoId: boolean },
+  ) {
     this.dbFilePath = filePath;
     this.data = {};
     this.lock = false;
+
+    this.autoSave = options?.autoSave === undefined ? true : options?.autoSave;
+    this.autoId = options?.autoId === undefined ? false : options?.autoId;
+
     this.load();
+  }
+
+  /**
+   * Returns the in memory data
+   */
+  public GetData() {
+    return this.data;
   }
 
   /**
@@ -32,7 +54,7 @@ export class PetiteDB {
    * @private
    */
   private load(): void {
-    if (fs.existsSync(this.dbFilePath)) {
+    if (existsSync(this.dbFilePath)) {
       const fileData = Deno.readTextFileSync(this.dbFilePath);
       this.data = JSON.parse(fileData);
     }
@@ -68,8 +90,20 @@ export class PetiteDB {
       console.error(`Record '${id}' already exists`);
       return false; // Record already exists
     }
-    this.data[collection][id] = record;
-    this.save();
+    if (this.autoId) {
+      const uuid = crypto.randomUUID();
+      if (this.data[collection][uuid]) {
+        console.error(`Record '${uuid}' already exists`);
+        return false; // Record already exists
+      }
+      this.data[collection][id] = { _id: uuid, ...record };
+    } else {
+      this.data[collection][id] = record;
+    }
+
+    if (this.autoSave) {
+      this.save();
+    }
     return true;
   }
 
@@ -82,6 +116,17 @@ export class PetiteDB {
    */
   public read(collection: string, id: string): RecordType | null {
     return this.data[collection]?.[id] || null;
+  }
+
+  /**
+   * Retrieves all records from the specified collection.
+   *
+   * @param {string} collection - The name of the collection.
+   * @return {(RecordType | null)} The retrieved record, or null if not found.
+   */
+  // deno-lint-ignore no-explicit-any
+  public readAll(collection: string): any[] | null {
+    return Object.values(this.data[collection]) || null;
   }
 
   /**
@@ -99,7 +144,9 @@ export class PetiteDB {
   ): boolean {
     if (!this.data[collection]?.[id]) return false; // Record does not exist
     this.data[collection][id] = { ...this.data[collection][id], ...record };
-    this.save();
+    if (this.autoSave) {
+      this.save();
+    }
     return true;
   }
 
@@ -113,7 +160,9 @@ export class PetiteDB {
   public delete(collection: string, id: string): boolean {
     if (!this.data[collection]?.[id]) return false; // Record does not exist
     delete this.data[collection][id];
-    this.save();
+    if (this.autoSave) {
+      this.save();
+    }
     return true;
   }
 
@@ -124,10 +173,27 @@ export class PetiteDB {
    * @param {string} id - The unique identifier for the record.
    * @param {RecordType} record - The new data for the record.
    */
-  public upsert(collection: string, id: string, record: RecordType): void {
+  public upsert(collection: string, id: string, record: RecordType): boolean {
     if (!this.data[collection]) this.data[collection] = {};
-    this.data[collection][id] = { ...this.data[collection][id], ...record };
-    this.save();
+    if (this.autoId && !this.data[collection][id]._id) {
+      const uuid = crypto.randomUUID();
+      if (this.data[collection][uuid]) {
+        console.error(`Record '${uuid}' already exists`);
+        return false; // Record already exists
+      } else {
+        this.data[collection][id] = {
+          _id: uuid,
+          ...this.data[collection][id],
+          ...record,
+        };
+      }
+    } else {
+      this.data[collection][id] = { ...this.data[collection][id], ...record };
+    }
+    if (this.autoSave) {
+      this.save();
+    }
+    return true;
   }
 
   /**
@@ -153,5 +219,26 @@ export class PetiteDB {
       if (matches) results.push(record);
     }
     return results;
+  }
+
+  /**
+   * Clears all records from the database.
+   *
+   */
+  public clear() {
+    if (existsSync(this.dbFilePath)) {
+      this.data = {};
+      if (this.autoSave) {
+        this.save();
+      }
+    }
+  }
+
+  /**
+   * Creates a snapshot of the current state of the database, effectively "freezing" it in time.
+   * And save data locally
+   */
+  public snapshot(): void {
+    this.save();
   }
 }

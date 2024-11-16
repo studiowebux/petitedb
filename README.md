@@ -21,7 +21,11 @@
 * Store and load data securely to/from a JSON file
 * Core operations:
 	+ Create, update, upsert, delete records
-	+ Read and find specific records
+	+ Read, Read all and find specific records
+	+ Snapshot and Clear data
+	+ Retrieve the raw data using GetData
+	+ Option to automatically add a `_id` per record
+	+ Option to manually save the data to disk
 * Ideal for test and offline applications
 
 ---
@@ -46,6 +50,15 @@ db.update("category", "shoes", { name: "Shoes" });
 db.read("category", "shoes");
 db.find("category", { name: "Shoes" });
 db.delete("category", "shoes");
+```
+
+```ts
+const db1 = new PetiteDB("autoid.json", true);
+
+db1.upsert("movies", "movie1", { title: "test 1" });
+db1.upsert("movies", "movie2", { title: "test 2" });
+db1.upsert("movies", "movie3", { title: "test 3" });
+console.log(db1.readAll("movies"));
 ```
 
 
