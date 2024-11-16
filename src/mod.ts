@@ -44,7 +44,7 @@ export class PetiteDB {
   /**
    * Returns the in memory data
    */
-  public GetData() {
+  public GetData(): DatabaseType {
     return this.data;
   }
 
