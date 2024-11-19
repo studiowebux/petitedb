@@ -260,7 +260,7 @@ export class PetiteDB {
     }
     try {
       if (!this.data[collection]) this.data[collection] = {};
-      if (this.autoId && !this.data[collection][id]._id) {
+      if (this.autoId && !this.data[collection]?.[id]?._id) {
         const uuid = crypto.randomUUID();
         if (this.data[collection][uuid]) {
           console.error(`Record '${uuid}' already exists`);
