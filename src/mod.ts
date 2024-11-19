@@ -3,6 +3,7 @@ import { existsSync } from "@std/fs";
 // deno-lint-ignore no-explicit-any
 type RecordType = Record<string, any>;
 type DatabaseType = Record<string, RecordType>;
+type LockType = "collection" | "row";
 
 /**
  * PetiteDB is a simple in-memory database with file persistence using JSON.
@@ -16,6 +17,8 @@ export class PetiteDB {
 
   private autoId: boolean;
   private autoSave: boolean;
+
+  private locks: Map<string, { type: LockType; ids?: Set<string> }>;
 
   /**
    * Constructs a new instance of PetiteDB with the given file path.
@@ -34,6 +37,8 @@ export class PetiteDB {
     this.dbFilePath = filePath;
     this.data = {};
     this.lock = false;
+
+    this.locks = new Map();
 
     this.autoSave = options?.autoSave === undefined ? true : options?.autoSave;
     this.autoId = options?.autoId === undefined ? false : options?.autoId;
@@ -67,11 +72,52 @@ export class PetiteDB {
    */
   private save(): void {
     while (this.lock) {
-      console.warn("Database is lock");
+      console.warn("Database is locked or inaccessible");
     }
     this.lock = true;
     Deno.writeTextFileSync(this.dbFilePath, JSON.stringify(this.data, null, 2));
     this.lock = false;
+  }
+
+  // Lock Management
+  private lockResource(collection: string, id?: string): boolean {
+    const lockKey = collection;
+    const lock = this.locks.get(lockKey);
+
+    if (lock) {
+      if (lock.type === "collection") {
+        return false; // Collection is locked
+      } else if (lock.type === "row" && id && lock.ids?.has(id)) {
+        return false; // Row is locked
+      }
+    }
+
+    if (!lock) {
+      this.locks.set(lockKey, {
+        type: id ? "row" : "collection",
+        ids: id ? new Set([id]) : undefined,
+      });
+    } else if (lock.type === "row" && id) {
+      lock.ids?.add(id);
+    }
+
+    return true;
+  }
+
+  private unlockResource(collection: string, id?: string): void {
+    const lockKey = collection;
+    const lock = this.locks.get(lockKey);
+
+    if (lock) {
+      if (lock.type === "collection") {
+        this.locks.delete(lockKey);
+      } else if (lock.type === "row" && id) {
+        lock.ids?.delete(id);
+        if (lock.ids?.size === 0) {
+          this.locks.delete(lockKey);
+        }
+      }
+    }
   }
 
   /**
@@ -83,28 +129,35 @@ export class PetiteDB {
    * @return {boolean} True if the record was created successfully, false otherwise.
    */
   public create(collection: string, id: string, record: RecordType): boolean {
-    if (!this.data[collection]) {
-      this.data[collection] = {};
+    if (!this.lockResource(collection, id)) {
+      throw new Error("Resource is locked");
     }
-    if (this.data[collection][id]) {
-      console.error(`Record '${id}' already exists`);
-      return false; // Record already exists
-    }
-    if (this.autoId) {
-      const uuid = crypto.randomUUID();
-      if (this.data[collection][uuid]) {
-        console.error(`Record '${uuid}' already exists`);
+    try {
+      if (!this.data[collection]) {
+        this.data[collection] = {};
+      }
+      if (this.data[collection][id]) {
+        console.error(`Record '${id}' already exists`);
         return false; // Record already exists
       }
-      this.data[collection][id] = { _id: uuid, ...record };
-    } else {
-      this.data[collection][id] = record;
-    }
+      if (this.autoId) {
+        const uuid = crypto.randomUUID();
+        if (this.data[collection][uuid]) {
+          console.error(`Record '${uuid}' already exists`);
+          return false; // Record already exists
+        }
+        this.data[collection][id] = { _id: uuid, ...record };
+      } else {
+        this.data[collection][id] = record;
+      }
 
-    if (this.autoSave) {
-      this.save();
+      if (this.autoSave) {
+        this.save();
+      }
+      return true;
+    } finally {
+      this.unlockResource(collection, id);
     }
-    return true;
   }
 
   /**
@@ -115,7 +168,14 @@ export class PetiteDB {
    * @return {(RecordType | null)} The retrieved record, or null if not found.
    */
   public read(collection: string, id: string): RecordType | null {
-    return this.data[collection]?.[id] || null;
+    if (!this.lockResource(collection, id)) {
+      throw new Error("Resource is locked");
+    }
+    try {
+      return this.data[collection]?.[id] || null;
+    } finally {
+      this.unlockResource(collection, id);
+    }
   }
 
   /**
@@ -126,7 +186,14 @@ export class PetiteDB {
    */
   // deno-lint-ignore no-explicit-any
   public readAll(collection: string): any[] | null {
-    return Object.values(this.data[collection]) || null;
+    if (!this.lockResource(collection)) {
+      throw new Error("Resource is locked");
+    }
+    try {
+      return Object.values(this.data[collection]) || null;
+    } finally {
+      this.unlockResource(collection);
+    }
   }
 
   /**
@@ -142,12 +209,19 @@ export class PetiteDB {
     id: string,
     record: Partial<RecordType>,
   ): boolean {
-    if (!this.data[collection]?.[id]) return false; // Record does not exist
-    this.data[collection][id] = { ...this.data[collection][id], ...record };
-    if (this.autoSave) {
-      this.save();
+    if (!this.lockResource(collection, id)) {
+      throw new Error("Resource is locked");
     }
-    return true;
+    try {
+      if (!this.data[collection]?.[id]) return false; // Record does not exist
+      this.data[collection][id] = { ...this.data[collection][id], ...record };
+      if (this.autoSave) {
+        this.save();
+      }
+      return true;
+    } finally {
+      this.unlockResource(collection, id);
+    }
   }
 
   /**
@@ -158,12 +232,19 @@ export class PetiteDB {
    * @return {boolean} True if the record was deleted successfully, false otherwise.
    */
   public delete(collection: string, id: string): boolean {
-    if (!this.data[collection]?.[id]) return false; // Record does not exist
-    delete this.data[collection][id];
-    if (this.autoSave) {
-      this.save();
+    if (!this.lockResource(collection, id)) {
+      throw new Error("Resource is locked");
     }
-    return true;
+    try {
+      if (!this.data[collection]?.[id]) return false; // Record does not exist
+      delete this.data[collection][id];
+      if (this.autoSave) {
+        this.save();
+      }
+      return true;
+    } finally {
+      this.unlockResource(collection, id);
+    }
   }
 
   /**
@@ -174,26 +255,33 @@ export class PetiteDB {
    * @param {RecordType} record - The new data for the record.
    */
   public upsert(collection: string, id: string, record: RecordType): boolean {
-    if (!this.data[collection]) this.data[collection] = {};
-    if (this.autoId && !this.data[collection][id]._id) {
-      const uuid = crypto.randomUUID();
-      if (this.data[collection][uuid]) {
-        console.error(`Record '${uuid}' already exists`);
-        return false; // Record already exists
+    if (!this.lockResource(collection, id)) {
+      throw new Error("Resource is locked");
+    }
+    try {
+      if (!this.data[collection]) this.data[collection] = {};
+      if (this.autoId && !this.data[collection][id]._id) {
+        const uuid = crypto.randomUUID();
+        if (this.data[collection][uuid]) {
+          console.error(`Record '${uuid}' already exists`);
+          return false; // Record already exists
+        } else {
+          this.data[collection][id] = {
+            _id: uuid,
+            ...this.data[collection][id],
+            ...record,
+          };
+        }
       } else {
-        this.data[collection][id] = {
-          _id: uuid,
-          ...this.data[collection][id],
-          ...record,
-        };
+        this.data[collection][id] = { ...this.data[collection][id], ...record };
       }
-    } else {
-      this.data[collection][id] = { ...this.data[collection][id], ...record };
+      if (this.autoSave) {
+        this.save();
+      }
+      return true;
+    } finally {
+      this.unlockResource(collection, id);
     }
-    if (this.autoSave) {
-      this.save();
-    }
-    return true;
   }
 
   /**
@@ -204,21 +292,28 @@ export class PetiteDB {
    * @return {RecordType[]} An array of matching records, or an empty array if no matches are found.
    */
   public find(collection: string, query: Partial<RecordType>): RecordType[] {
-    const results: RecordType[] = [];
-    const records = this.data[collection];
-    if (!records) return results;
-    for (const key in records) {
-      const record = records[key];
-      let matches = true;
-      for (const field in query) {
-        if (record[field] !== query[field]) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) results.push(record);
+    if (!this.lockResource(collection)) {
+      throw new Error("Resource is locked");
     }
-    return results;
+    try {
+      const results: RecordType[] = [];
+      const records = this.data[collection];
+      if (!records) return results;
+      for (const key in records) {
+        const record = records[key];
+        let matches = true;
+        for (const field in query) {
+          if (record[field] !== query[field]) {
+            matches = false;
+            break;
+          }
+        }
+        if (matches) results.push(record);
+      }
+      return results;
+    } finally {
+      this.unlockResource(collection);
+    }
   }
 
   /**
