@@ -317,6 +317,37 @@ export class PetiteDB {
   }
 
   /**
+   * Using the length for the amount of results, returns randomly entries from the query
+   * @param collection
+   * @param query
+   * @param length
+   * @returns
+   */
+  public sample(
+    collection: string,
+    query: Partial<RecordType>,
+    length: number = 1,
+  ): Array<RecordType | null> {
+    const results = this.find(collection, query);
+    if (!results) {
+      return [];
+    }
+    const selection: Array<RecordType | null> = [];
+    for (let i = 0; i < length; i++) {
+      if (results.length <= 0) {
+        selection.push(null);
+        continue;
+      }
+      const min = 0;
+      const max = results.length;
+      const index = Math.floor(Math.random() * (min - max) + max);
+      selection.push(results[index]);
+      results.splice(index, 1);
+    }
+    return selection;
+  }
+
+  /**
    * Clears all records from the database.
    *
    */

@@ -26,6 +26,7 @@
 	+ Retrieve the raw data using GetData
 	+ Option to automatically add a `_id` per record
 	+ Option to manually save the data to disk
+	+ Retrieve configurable amount of random records
 * Ideal for test and offline applications
 
 ---
