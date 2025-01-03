@@ -126,7 +126,7 @@ export class PetiteDB {
     if (!collection || collection === "") {
       throw new Error("No collection provided");
     }
-    if (!this.data) {
+    if (!this.data || Object.keys(this.data).length === 0) {
       throw new Error("No data in the database");
     }
   }
