@@ -62,7 +62,9 @@ export class PetiteDB {
     if (existsSync(this.dbFilePath)) {
       const fileData = Deno.readTextFileSync(this.dbFilePath);
       this.data = JSON.parse(fileData);
+      return;
     }
+    Deno.writeTextFileSync(this.dbFilePath, JSON.stringify(this.data, null, 2));
   }
 
   /**
@@ -120,6 +122,15 @@ export class PetiteDB {
     }
   }
 
+  private check(collection: string) {
+    if (!collection || collection === "") {
+      throw new Error("No collection provided");
+    }
+    if (!this.data) {
+      throw new Error("No data in the database");
+    }
+  }
+
   /**
    * Creates a new record in the specified collection.
    *
@@ -172,6 +183,7 @@ export class PetiteDB {
       throw new Error("Resource is locked");
     }
     try {
+      this.check(collection);
       return this.data[collection]?.[id] || null;
     } finally {
       this.unlockResource(collection, id);
@@ -190,6 +202,7 @@ export class PetiteDB {
       throw new Error("Resource is locked");
     }
     try {
+      this.check(collection);
       return Object.values(this.data[collection]) || null;
     } finally {
       this.unlockResource(collection);
@@ -213,6 +226,7 @@ export class PetiteDB {
       throw new Error("Resource is locked");
     }
     try {
+      this.check(collection);
       if (!this.data[collection]?.[id]) return false; // Record does not exist
       this.data[collection][id] = { ...this.data[collection][id], ...record };
       if (this.autoSave) {
@@ -236,6 +250,7 @@ export class PetiteDB {
       throw new Error("Resource is locked");
     }
     try {
+      this.check(collection);
       if (!this.data[collection]?.[id]) return false; // Record does not exist
       delete this.data[collection][id];
       if (this.autoSave) {
@@ -259,6 +274,7 @@ export class PetiteDB {
       throw new Error("Resource is locked");
     }
     try {
+      this.check(collection);
       if (!this.data[collection]) this.data[collection] = {};
       if (this.autoId && !this.data[collection]?.[id]?._id) {
         const uuid = crypto.randomUUID();
@@ -296,6 +312,7 @@ export class PetiteDB {
       throw new Error("Resource is locked");
     }
     try {
+      this.check(collection);
       const results: RecordType[] = [];
       const records = this.data[collection];
       if (!records) return results;
