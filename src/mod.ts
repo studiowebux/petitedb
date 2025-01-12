@@ -27,12 +27,13 @@ export class PetiteDB {
    * @param {Object} options - Optional configuration options for the database.
    * @param {boolean} [options.autoSave=true] - If true, the database will be saved automatically after each operation.
    * @param {boolean} [options.autoId=false] - If true, a unique identifier will be generated automatically.
+   * @param {boolean} [options.watch=false] - If true, It sets a fs watch to reload the db file when modified.
    *
    * @class PetiteDB
    */
   constructor(
     filePath: string,
-    options?: { autoSave: boolean; autoId: boolean },
+    options?: { autoSave?: boolean; autoId?: boolean; watch?: boolean },
   ) {
     this.dbFilePath = filePath;
     this.data = {};
@@ -42,6 +43,10 @@ export class PetiteDB {
 
     this.autoSave = options?.autoSave === undefined ? true : options?.autoSave;
     this.autoId = options?.autoId === undefined ? false : options?.autoId;
+
+    if (options?.watch === true) {
+      this.watch();
+    }
 
     this.load();
   }
@@ -62,9 +67,35 @@ export class PetiteDB {
     if (existsSync(this.dbFilePath)) {
       const fileData = Deno.readTextFileSync(this.dbFilePath);
       this.data = JSON.parse(fileData);
+
       return;
     }
+    // Create initial state.
     Deno.writeTextFileSync(this.dbFilePath, JSON.stringify(this.data, null, 2));
+  }
+
+  /*
+   * Watch the db file path for external updates and reload the changes if any.
+   * Useful when debugging and doing manual editing of the file.
+   */
+  public async watch(): Promise<void> {
+    const watcher = Deno.watchFs(this.dbFilePath, { recursive: false });
+
+    // NOTE: Known issue, it triggers the event twice. (noticed on deno 2.1.4 and 2.1.5)
+    // This is a debug-only feature, will investigate later.
+    // Handle file changes
+    for await (const event of watcher) {
+      if (event.kind === "modify") {
+        while (this.lock) {
+          console.warn("Database is locked or inaccessible");
+        }
+
+        this.lock = true;
+        const fileData = Deno.readTextFileSync(this.dbFilePath);
+        this.data = JSON.parse(fileData);
+        this.lock = false;
+      }
+    }
   }
 
   /**

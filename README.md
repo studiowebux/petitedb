@@ -27,6 +27,7 @@
 	+ Option to automatically add a `_id` per record
 	+ Option to manually save the data to disk
 	+ Retrieve configurable amount of random records
+	+ Option to watch local DB File and reload content automatically when its content is modified
 * Ideal for test and offline applications
 
 ---
@@ -54,7 +55,7 @@ db.delete("category", "shoes");
 ```
 
 ```ts
-const db1 = new PetiteDB("autoid.json", true);
+const db1 = new PetiteDB("autoid.json");
 
 db1.upsert("movies", "movie1", { title: "test 1" });
 db1.upsert("movies", "movie2", { title: "test 2" });
