@@ -10,7 +10,7 @@ type LockType = "collection" | "row";
  *
  * @class PetiteDB
  */
-export class PetiteDB {
+export class PetiteDB<C extends string> {
   private dbFilePath: string;
   private data: DatabaseType;
   private lock: boolean;
@@ -113,7 +113,7 @@ export class PetiteDB {
   }
 
   // Lock Management
-  private lockResource(collection: string, id?: string): boolean {
+  private lockResource(collection: C, id?: string): boolean {
     const lockKey = collection;
     const lock = this.locks.get(lockKey);
 
@@ -137,7 +137,7 @@ export class PetiteDB {
     return true;
   }
 
-  private unlockResource(collection: string, id?: string): void {
+  private unlockResource(collection: C, id?: string): void {
     const lockKey = collection;
     const lock = this.locks.get(lockKey);
 
@@ -153,7 +153,7 @@ export class PetiteDB {
     }
   }
 
-  private check(collection: string) {
+  private check(collection: C) {
     if (!collection || collection === "") {
       throw new Error("No collection provided");
     }
@@ -170,7 +170,7 @@ export class PetiteDB {
    * @param {RecordType} record - The data for the new record.
    * @return {boolean} True if the record was created successfully, false otherwise.
    */
-  public create(collection: string, id: string, record: RecordType): boolean {
+  public create(collection: C, id: string, record: RecordType): boolean {
     if (!this.lockResource(collection, id)) {
       throw new Error("Resource is locked");
     }
@@ -209,7 +209,7 @@ export class PetiteDB {
    * @param {string} id - The unique identifier for the record.
    * @return {(RecordType | null)} The retrieved record, or null if not found.
    */
-  public read(collection: string, id: string): RecordType | null {
+  public read<T extends RecordType>(collection: C, id: string): T | null {
     if (!this.lockResource(collection, id)) {
       throw new Error("Resource is locked");
     }
@@ -225,10 +225,10 @@ export class PetiteDB {
    * Retrieves all records from the specified collection.
    *
    * @param {string} collection - The name of the collection.
-   * @return {(RecordType | null)} The retrieved record, or null if not found.
+   * @return {(RecordType[] | null)} The retrieved record, or null if not found.
    */
   // deno-lint-ignore no-explicit-any
-  public readAll(collection: string): any[] | null {
+  public readAll<T extends RecordType>(collection: C): T[] | null {
     if (!this.lockResource(collection)) {
       throw new Error("Resource is locked");
     }
@@ -249,7 +249,7 @@ export class PetiteDB {
    * @return {boolean} True if the record was updated successfully, false otherwise.
    */
   public update(
-    collection: string,
+    collection: C,
     id: string,
     record: Partial<RecordType>,
   ): boolean {
@@ -276,7 +276,7 @@ export class PetiteDB {
    * @param {string} id - The unique identifier for the record.
    * @return {boolean} True if the record was deleted successfully, false otherwise.
    */
-  public delete(collection: string, id: string): boolean {
+  public delete(collection: C, id: string): boolean {
     if (!this.lockResource(collection, id)) {
       throw new Error("Resource is locked");
     }
@@ -300,7 +300,7 @@ export class PetiteDB {
    * @param {string} id - The unique identifier for the record.
    * @param {RecordType} record - The new data for the record.
    */
-  public upsert(collection: string, id: string, record: RecordType): boolean {
+  public upsert(collection: C, id: string, record: RecordType): boolean {
     if (!this.lockResource(collection, id)) {
       throw new Error("Resource is locked");
     }
@@ -338,13 +338,16 @@ export class PetiteDB {
    * @param {Partial<RecordType>} query - The query criteria to match records against.
    * @return {RecordType[]} An array of matching records, or an empty array if no matches are found.
    */
-  public find(collection: string, query: Partial<RecordType>): RecordType[] {
+  public find<T extends RecordType>(
+    collection: C,
+    query: Partial<RecordType>,
+  ): T[] {
     if (!this.lockResource(collection)) {
       throw new Error("Resource is locked");
     }
     try {
       this.check(collection);
-      const results: RecordType[] = [];
+      const results: T[] = [];
       const records = this.data[collection];
       if (!records) return results;
       for (const key in records) {
@@ -371,16 +374,16 @@ export class PetiteDB {
    * @param length
    * @returns
    */
-  public sample(
-    collection: string,
+  public sample<T extends RecordType>(
+    collection: C,
     query: Partial<RecordType>,
     length: number = 1,
-  ): Array<RecordType | null> {
-    const results = this.find(collection, query);
+  ): Array<T | null> {
+    const results = this.find<T>(collection, query);
     if (!results) {
       return [];
     }
-    const selection: Array<RecordType | null> = [];
+    const selection: Array<T | null> = [];
     for (let i = 0; i < length; i++) {
       if (results.length <= 0) {
         selection.push(null);
@@ -397,11 +400,23 @@ export class PetiteDB {
 
   /**
    * Clears all records from the database.
-   *
    */
   public clear() {
     if (existsSync(this.dbFilePath)) {
       this.data = {};
+      if (this.autoSave) {
+        this.save();
+      }
+    }
+  }
+
+  /**
+   * Drop one collection.
+   * @param collection
+   */
+  public drop(collection: C) {
+    if (existsSync(this.dbFilePath)) {
+      this.data[collection] = {};
       if (this.autoSave) {
         this.save();
       }

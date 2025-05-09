@@ -17,18 +17,20 @@
 
 ## About
 
-* Manage data in memory
-* Store and load data securely to/from a JSON file
-* Core operations:
-	+ Create, update, upsert, delete records
-	+ Read, Read all and find specific records
-	+ Snapshot and Clear data
-	+ Retrieve the raw data using GetData
-	+ Option to automatically add a `_id` per record
-	+ Option to manually save the data to disk
-	+ Retrieve configurable amount of random records
-	+ Option to watch local DB File and reload content automatically when its content is modified
-* Ideal for test and offline applications
+- Manage data in memory
+- Store and load data securely to/from a JSON file
+- Core operations:
+  - Create, update, upsert, delete records
+  - Drop Collection
+  - Read, Read all and find specific records
+  - Snapshot and Clear data
+  - Retrieve the raw data using GetData
+  - Option to automatically add a `_id` per record
+  - Option to manually save the data to disk
+  - Retrieve configurable amount of random records
+  - Option to watch local DB File and reload content automatically when its content is modified
+  - Support Types: Data and Collections
+- Ideal for test and offline applications
 
 ---
 
@@ -36,8 +38,11 @@
 
 1. Install deno: https://deno.com
 2. `deno add @studiowebux/petitedb`
+3. `import { PetiteDB } from "@studiowebux/petitedb";`
 
 **Example:**
+
+*See `__tests__` directory for more examples.*
 
 ```ts
 import { PetiteDB } from "@studiowebux/petitedb";
@@ -50,8 +55,11 @@ db.create("category", "shoes", { name: "Shoe" });
 db.upsert("category", "shoes", { name: "shoes" });
 db.update("category", "shoes", { name: "Shoes" });
 db.read("category", "shoes");
+db.readAll("category");
 db.find("category", { name: "Shoes" });
 db.delete("category", "shoes");
+db.drop("category");
+db.clear();
 ```
 
 ```ts
@@ -63,6 +71,18 @@ db1.upsert("movies", "movie3", { title: "test 3" });
 console.log(db1.readAll("movies"));
 ```
 
+```ts
+type Collections = "account" | "profile" | "organization"
+type Account = {
+  email: string
+}
+
+const db = new PetiteDB<Collections>("db.json");
+
+db.create("accounts", "1", {email: "tommy@studiowebux.com"});
+const account = db.read<Account>("accounts", "1");
+console.log(account?.email)
+```
 
 ### Releases and Github Actions
 
@@ -90,9 +110,9 @@ git push origin tags/X.Y.Z
 git checkout -b <feature|fix|release|chore|hotfix>/prefix-name
 ```
 
-> Your branch name must starts with [feature|fix|release|chore|hotfix] and use a / before the name;
-> Use hyphens as separator;
-> The prefix correspond to your Kanban tool id (e.g. abc-123)
+> Your branch name must starts with [feature|fix|release|chore|hotfix] and use a
+> / before the name; Use hyphens as separator; The prefix correspond to your
+> Kanban tool id (e.g. abc-123)
 
 **Keep your branch synced:**
 
