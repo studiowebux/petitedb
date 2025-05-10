@@ -108,5 +108,6 @@ await db.commit();
 await db.flush();
 
 console.timeEnd("mutate on disk");
+await db.shutdown();
 
 console.timeEnd("total");

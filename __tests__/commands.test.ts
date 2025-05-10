@@ -1,5 +1,5 @@
 // deno test -A
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertObjectMatch } from "@std/assert";
 import { PetiteDB } from "../src/mod.ts";
 
 try {
@@ -15,67 +15,86 @@ try {
   // ok
 }
 
-const db = new PetiteDB("results/database.json");
+const db = new PetiteDB("results/database.json", {
+  maxWritesBeforeFlush: 1000,
+});
 await db.load();
+
 Deno.test("Create record", async () => {
-  await db.create("category", "shoes", { name: "Shoe" });
-  assertEquals(db.read("category", "shoes"), { name: "Shoe" });
+  const id = await db.create("category", { name: "Shoe" });
+  assertObjectMatch(db.read("category", { _id: id })!.record, { name: "Shoe" });
 });
 
 Deno.test("Upsert record", async () => {
-  await db.upsert("category", "shoes", { name: "shoes" });
-  assertEquals(db.read("category", "shoes"), { name: "shoes" });
+  const id = await db.create("category", { name: "Shoe" });
+  await db.upsert("category", { _id: id }, { name: "shoes" });
+  assertObjectMatch(db.read("category", { _id: id })!.record, {
+    name: "shoes",
+  });
 });
 
 Deno.test("Upsert second record", async () => {
-  await db.upsert("category", "hats", { name: "Hats" });
-  assertEquals(db.read("category", "hats"), { name: "Hats" });
+  const id = await db.upsert("category", { _id: "inexisting" }, {
+    name: "Hats",
+  });
+  assertObjectMatch(db.read("category", { _id: id })!.record, {
+    name: "Hats",
+  });
 });
 
 Deno.test("Update record", async () => {
-  await db.update("category", "shoes", { name: "Shoes" });
-  assertEquals(db.read("category", "shoes"), { name: "Shoes" });
+  const id = await db.create("category", { name: "Shoe" });
+  await db.update("category", { _id: id }, { name: "Shoes" });
+  assertObjectMatch(db.read("category", { _id: id })!.record, {
+    name: "Shoes",
+  });
 });
 
-Deno.test("Read record", () => {
-  assertEquals(db.read("category", "shoes"), { name: "Shoes" });
+Deno.test("Read record", async () => {
+  const id = await db.create("category", { name: "Shoe" });
+  assertObjectMatch(db.read("category", { _id: id })!.record, { name: "Shoe" });
 });
 
 Deno.test("Find record", () => {
-  assertEquals(db.find("category", { name: "Shoes" }), [{ name: "Shoes" }]);
+  assertEquals(
+    db.find<{ name: string }>("category", { name: "Shoes" }).length,
+    1,
+  );
 });
 
 Deno.test("Delete record", async () => {
-  await db.delete("category", "shoes");
-  assertEquals(db.read("category", "shoes"), null);
-  assertEquals(db.read("category", "hats"), { name: "Hats" });
+  const id = await db.create("category", { name: "Shoe" });
+  const id1 = await db.create("category", { name: "Hats" });
+  await db.delete("category", id);
+  assertEquals(db.read("category", { _id: id }), null);
+  assertObjectMatch(db.read("category", { _id: id1 })!.record, {
+    name: "Hats",
+  });
 });
 
 Deno.test("Read all record", () => {
-  assertEquals(db.readAll("category"), [{ name: "Hats" }]);
+  assertEquals(db.readAll("category").length, 7);
 });
 
 Deno.test("Create and Read with auto id", async () => {
   const db1 = new PetiteDB<"movies">("results/autoid.json", {
     autoCommit: true,
-    autoId: false,
   });
   await db1.load();
-  assertEquals(await db1.create("movies", "movie1", { title: "test 1" }), true);
-  assertEquals(await db1.create("movies", "movie2", { title: "test 2" }), true);
-  assertEquals(await db1.create("movies", "movie3", { title: "test 3" }), true);
+  await db1.create("movies", { title: "test 1" });
+  await db1.create("movies", { title: "test 2" });
+  await db1.create("movies", { title: "test 3" });
   assertEquals(db1.readAll("movies")?.length, 3);
 });
 
 Deno.test("Create 100 entries", async () => {
   const db1 = new PetiteDB<"moviesCC">("results/cc.json", {
     autoCommit: true,
-    autoId: false,
   });
   await db1.load();
   await Promise.all(
     [...Array(100).keys()].map(async (i) =>
-      await db1.create("moviesCC", `movie${i}`, { title: `test ${i}` })
+      await db1.create("moviesCC", { title: `test ${i}` })
     ),
   );
   assertEquals(db1.readAll("moviesCC")?.length, 100);
@@ -84,12 +103,11 @@ Deno.test("Create 100 entries", async () => {
 Deno.test("Create 500 entries", async () => {
   const db1 = new PetiteDB<"moviesCC">("results/cc1.json", {
     autoCommit: true,
-    autoId: false,
   });
   await db1.load();
   await Promise.all(
     [...Array(500).keys()].map(async (i) =>
-      await db1.create("moviesCC", `movie${i}`, { title: `test ${i}` })
+      await db1.create("moviesCC", { title: `test ${i}` })
     ),
   );
   assertEquals(db1.readAll("moviesCC")?.length, 500);
@@ -98,12 +116,11 @@ Deno.test("Create 500 entries", async () => {
 Deno.test("Create 1000 entries", async () => {
   const db1 = new PetiteDB<"moviesCC">("results/cc2.json", {
     autoCommit: true,
-    autoId: false,
   });
   await db1.load();
   await Promise.all(
     [...Array(1000).keys()].map(async (i) =>
-      await db1.create("moviesCC", `movie${i}`, { title: `test ${i}` })
+      await db1.create("moviesCC", { title: `test ${i}` })
     ),
   );
   assertEquals(db1.readAll("moviesCC")?.length, 1000);
@@ -112,12 +129,11 @@ Deno.test("Create 1000 entries", async () => {
 Deno.test("Create 10000 entries", async () => {
   const db1 = new PetiteDB<"moviesCC">("results/cc3.json", {
     autoCommit: true,
-    autoId: false,
   });
   await db1.load();
   await Promise.all(
     [...Array(10000).keys()].map(async (i) =>
-      await db1.create("moviesCC", `movie${i}`, { title: `test ${i}` })
+      await db1.create("moviesCC", { title: `test ${i}` })
     ),
   );
   assertEquals(db1.readAll("moviesCC")?.length, 10000);
@@ -126,7 +142,6 @@ Deno.test("Create 10000 entries", async () => {
 Deno.test("Read all 10000 entries", async () => {
   const db1 = new PetiteDB<"moviesCC">("results/cc3.json", {
     autoCommit: true,
-    autoId: false,
   });
   await db1.load();
   assertEquals(db1.readAll("moviesCC")?.length, 10000);
@@ -135,9 +150,9 @@ Deno.test("Read all 10000 entries", async () => {
 Deno.test("Create database and clear", async () => {
   const db1 = new PetiteDB<"movies">("results/clear.json");
   await db1.load();
-  assertEquals(await db1.create("movies", "movie1", { title: "test 1" }), true);
-  assertEquals(await db1.create("movies", "movie2", { title: "test 2" }), true);
-  assertEquals(await db1.create("movies", "movie3", { title: "test 3" }), true);
+  await db1.create("movies", { title: "test 1" });
+  await db1.create("movies", { title: "test 2" });
+  await db1.create("movies", { title: "test 3" });
   assertEquals(db1.readAll("movies")?.length, 3);
   await db1.clear();
   assertEquals(db1.GetData(), {});
@@ -152,13 +167,12 @@ Deno.test(
       // do nothing for this test
     }
     const db1 = new PetiteDB<"moviesCC">("results/cc4.json", {
-      autoId: true,
       autoCommit: false,
     });
     await db1.load();
     await Promise.all(
       [...Array(10000).keys()].map(async (i) =>
-        await db1.create("moviesCC", `movie${i}`, { title: `test ${i}` })
+        await db1.create("moviesCC", { title: `test ${i}` })
       ),
     );
     assertEquals(db1.readAll("moviesCC")?.length, 10000);
@@ -169,13 +183,12 @@ Deno.test(
   "Create 10000 entries without auto commit and commit at the end",
   async () => {
     const db1 = new PetiteDB<"moviesCC">("results/cc5.json", {
-      autoId: true,
       autoCommit: false,
     });
     await db1.load();
     await Promise.all(
       [...Array(10000).keys()].map(async (i) =>
-        await db1.create("moviesCC", `movie${i}`, { title: `test ${i}` })
+        await db1.create("moviesCC", { title: `test ${i}` })
       ),
     );
     assertEquals(db1.readAll("moviesCC")?.length, 10000);

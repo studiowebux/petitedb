@@ -29,8 +29,6 @@
   - Retrieve the raw data using `GetData`
   - Option to automatically add a `_id` per record
   - Option to manually commit the data to disk
-  - Option to watch local DB File and reload content automatically when its
-    content is modified
   - Option for In-Memory Only
   - Support Typescript Types: _Data_ (`RecordType`) and _Collections_ (`string`)
 - Ideal for test, offline applications and Proof-of-Concept
@@ -40,6 +38,7 @@
   - updatedAt
   - Version (increase when update and upsert)
 - Collection data is split into individual files.
+- Added simple indexing (by _id)
 
 ---
 

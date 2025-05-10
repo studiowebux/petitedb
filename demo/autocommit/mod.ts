@@ -12,7 +12,7 @@ Deno.mkdirSync("db", { recursive: true });
 
 const db = new PetiteDB<"people">("db/demo.json", {
   "autoCommit": true,
-  "maxWritesBeforeFlush": 100,
+  "maxWritesBeforeFlush": 1000,
   "walLogPath": "wal/wal.log",
   "watch": false,
 });
@@ -29,5 +29,7 @@ await Promise.all(
   }),
 );
 console.timeEnd("generator");
+
+await db.shutdown();
 
 console.timeEnd("total");

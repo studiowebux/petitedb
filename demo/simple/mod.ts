@@ -8,12 +8,13 @@ type Person = {
 
 console.time("total");
 
+Deno.mkdirSync("db", { recursive: true });
+
 const db = new PetiteDB<"people">("db/demo.json", {
-  "autoCommit": false,
+  "autoCommit": true,
   "maxWritesBeforeFlush": 100,
-  "walLogPath": "wal/wal.log",
+  "walLogPath": "wal/wal.logc",
   "watch": false,
-  memoryOnly: true,
 });
 
 await db.load();
@@ -36,7 +37,6 @@ console.log("databaseDump", databaseDump);
 
 const people = db.find<Person>("people", { fullname: "Isaac Hernandez" });
 console.log("people", people);
-
 const allPeople = db.find<Person>("people", {});
 console.log("allPeople", allPeople);
 
@@ -56,48 +56,6 @@ const count = db.count("people", {});
 console.log("count", count);
 
 console.timeEnd("Getters");
-
-console.time("Setters");
-
-const fullname = nameGenerator();
-
-const id = await db.create<Person>("people", {
-  fullname,
-  createdAt: new Date(),
-});
-console.log("Created", db.read<Person>("people", { _id: id }));
-
-await db.update<Person>("people", { _id: id }, { fullname: `${fullname} II` });
-console.log("Updated", db.read<Person>("people", { _id: id }));
-
-await db.upsert<Person>("people", { _id: id }, {
-  fullname,
-  createdAt: new Date(),
-});
-console.log("upserted", db.read<Person>("people", { _id: id }));
-
-await db.delete("people", id);
-console.log("deleted", db.read<Person>("people", { _id: id }));
-
-const fullname1 = nameGenerator();
-
-const id1 = await db.create<Person>("people", {
-  fullname: fullname1,
-  createdAt: new Date(),
-});
-console.log("Created #1", db.read<Person>("people", { _id: id1 }));
-
-const rowsCount = await db.findAndDelete("people", { _id: id1 }, "_id");
-console.log("rowsCount", rowsCount);
-console.log("Deleted #1", db.read<Person>("people", { _id: id1 }));
-
-await db.drop("people");
-console.log("Dropped collection", db.readAll<Person>("people"));
-
-await db.clear();
-console.log("Dropped database", db.GetData());
-
-console.timeEnd("Setters");
 
 await db.shutdown();
 

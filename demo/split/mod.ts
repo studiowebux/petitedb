@@ -45,4 +45,6 @@ await Promise.all([
 
 console.timeEnd("generator");
 
+await db.shutdown();
+
 console.timeEnd("total");

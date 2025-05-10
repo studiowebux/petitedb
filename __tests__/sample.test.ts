@@ -4,12 +4,12 @@ const db = new PetiteDB<"items">("results/sample.json");
 await db.load();
 
 Deno.test("Create record", async () => {
-  await db.create("items", "shoe1", { category: "shoe", name: "Shoe 1" });
-  await db.create("items", "shoe2", { category: "shoe", name: "Shoe 2" });
-  await db.create("items", "shoe3", { category: "shoe", name: "Shoe 3" });
-  await db.create("items", "shoe4", { category: "shoe", name: "Shoe 4" });
-  await db.create("items", "shoe5", { category: "shoe", name: "Shoe 5" });
-  await db.create("items", "shoe6", { category: "shoe", name: "Shoe 6" });
+  await db.create("items", { category: "shoe", name: "Shoe 1" });
+  await db.create("items", { category: "shoe", name: "Shoe 2" });
+  await db.create("items", { category: "shoe", name: "Shoe 3" });
+  await db.create("items", { category: "shoe", name: "Shoe 4" });
+  await db.create("items", { category: "shoe", name: "Shoe 5" });
+  await db.create("items", { category: "shoe", name: "Shoe 6" });
 
   const samples = db.sample("items", { category: "shoe" }, 3);
   const sample = db.sample("items", { category: "shoe" }, 1);

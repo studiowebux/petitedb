@@ -3,6 +3,7 @@ import { basename, dirname, extname, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { TextLineStream } from "@std/streams";
 import { JsonParseStream } from "@std/json";
+import { hrtime } from "node:process";
 
 type LockType = "collection" | "row";
 
@@ -11,20 +12,23 @@ type Collection = string;
 // deno-lint-ignore no-explicit-any
 type Schema = Record<string, any>;
 
+type Meta = {
+  pk?: string;
+  sk?: string;
+  readonly?: string[];
+  schema?: Record<string, string>;
+  createdAt: number;
+  updatedAt: number;
+  version: string;
+};
+
 type DatabaseRow = {
   record: Schema;
-  _meta: {
-    pk?: string;
-    sk?: string;
-    readonly?: string[];
-    schema?: Record<string, string>;
-    createdAt: number;
-    updatedAt: number;
-    version: string;
-  };
+  _meta: Meta;
 };
 type DatabaseRowReturn<T> = DatabaseRow & { record: T & Schema };
-type DatabaseDataType = Record<Collection, Map<string, DatabaseRow>>;
+type DatabaseDataType = Record<Collection, DatabaseRow[]>;
+type DatabaseIndexType = Record<Collection, Map<string, DatabaseRow>>;
 
 type WALEntry = {
   op: "insert" | "update" | "delete";
@@ -50,6 +54,7 @@ function incrementHexVersion(currentVersion: string) {
 export class PetiteDB<C extends string> {
   private dbFilePath: string;
   private data: DatabaseDataType;
+  private index: DatabaseIndexType;
   private lock: boolean;
 
   private autoCommit: boolean;
@@ -70,7 +75,6 @@ export class PetiteDB<C extends string> {
    * @param {string} filePath - The file path for the database file.
    * @param {Object} options - Optional configuration options for the database.
    * @param {boolean} [options.autoCommit=true] [default: true] - If true, the database will be commitd automatically after each operation.
-   * @param {boolean} [options.watch=false] [default: false] - (Experimental/Unstable) If true, It sets a fs watch to reload the db file when modified.
    * @param {boolean} [options.walLogPath="db_name.wal.log"] [default: "db_name.wal.log"] - Can rename the WAL file
    * @param {boolean} [options.maxWritesBeforeFlush=100] [default: 100] - Number of entries before saving on-disk
    * @param {boolean} [options.memoryOnly=false] [default: false] - Ephemeral DB only
@@ -81,7 +85,6 @@ export class PetiteDB<C extends string> {
     filePath: string,
     options?: {
       autoCommit?: boolean;
-      watch?: boolean;
       walLogPath?: string;
       maxWritesBeforeFlush?: number;
       memoryOnly?: boolean;
@@ -91,6 +94,8 @@ export class PetiteDB<C extends string> {
     this.dbFilePath = filePath;
 
     this.data = {};
+    this.index = {};
+
     this.lock = false;
 
     this.locks = new Map();
@@ -99,9 +104,7 @@ export class PetiteDB<C extends string> {
       ? true
       : options?.autoCommit;
 
-    if (options?.watch === true) {
-      this.watch();
-    }
+
 
     this.writeCount = 0;
     this.maxWritesBeforeFlush = options?.maxWritesBeforeFlush || 100;
@@ -134,9 +137,11 @@ export class PetiteDB<C extends string> {
   public async load(): Promise<void> {
     if (this.memoryOnly === true) {
       this.data = {};
+      this.index = {};
       return;
     }
 
+    const start = hrtime();
     try {
       const collections = Deno.readTextFileSync(this.dbFilePath);
       const collectionsArray = JSON.parse(collections);
@@ -147,7 +152,9 @@ export class PetiteDB<C extends string> {
         }.${collection}.json`;
         const fileData = Deno.readTextFileSync(filename);
         const data = JSON.parse(fileData) as DatabaseRow[];
-        this.data[collection] = new Map(
+
+        this.data[collection] = data;
+        this.index[collection] = new Map(
           data.map((row) => [row.record._id, row]),
         );
       }
@@ -165,32 +172,9 @@ export class PetiteDB<C extends string> {
       await this.truncate();
       // console.log("WAL Restored");
     }
+    const end = hrtime(start);
 
-    console.log("Database is ready");
-  }
-
-  /*
-   * Watch the db file path for external updates and reload the changes if any.
-   * Useful when debugging and doing manual editing of the file.
-   */
-  public async watch(): Promise<void> {
-    const watcher = Deno.watchFs(this.dbFilePath, { recursive: false });
-
-    // NOTE: Known issue, it triggers the event twice. (noticed on deno 2.1.4 and 2.1.5)
-    // This is a debug-only feature, will investigate later.
-    // Handle file changes
-    for await (const event of watcher) {
-      if (event.kind === "modify") {
-        while (this.lock) {
-          console.warn("[Watch] Database is locked or inaccessible");
-        }
-
-        this.lock = true;
-        const fileData = Deno.readTextFileSync(this.dbFilePath);
-        this.data = JSON.parse(fileData);
-        this.lock = false;
-      }
-    }
+    console.log(`Database is ready in ${end[0] + end[1] / Math.pow(10, 9)}ms`);
   }
 
   /**
@@ -221,32 +205,37 @@ export class PetiteDB<C extends string> {
 
     this.lock = true;
 
-    const collections: Set<string> = new Set();
+    try {
+      const collections: Set<string> = new Set();
+      for (const [collection, rows] of Object.entries(this.data)) {
+        const filename = `${dirname(this.dbFilePath)}${sep}${
+          basename(this.dbFilePath, extname(this.dbFilePath))
+        }.${collection}.json`;
+        const tmp = await Deno.makeTempFile({
+          prefix: `petitedb-${collection}`,
+        });
+        // FIXME: Next optimization is to get rid of JSON format; cause it increases considerably the time to write on-disk
+        // The reason of this project is to allow an easy and intuitive way to view and edit json data for a POC.
+        await Deno.writeTextFile(
+          tmp,
+          JSON.stringify(rows, replacer),
+        );
+        await Deno.rename(tmp, filename);
+        collections.add(collection);
+      }
 
-    for (const [collection, rows] of Object.entries(this.data)) {
-      const filename = `${dirname(this.dbFilePath)}${sep}${
-        basename(this.dbFilePath, extname(this.dbFilePath))
-      }.${collection}.json`;
-      const tmp = await Deno.makeTempFile({ prefix: `petitedb-${collection}` });
-      // FIXME: Next optimization is to get rid of JSON format; cause it increases considerably the time to write on-disk
-      // The reason of this project is to allow an easy and intuitive way to view and edit json data for a POC.
+      const tmpIndex = await Deno.makeTempFile({ prefix: `petitedb-index` });
+
       await Deno.writeTextFile(
-        tmp,
-        JSON.stringify([...rows.values()], replacer),
+        tmpIndex,
+        JSON.stringify([...collections.values()]),
       );
-      await Deno.rename(tmp, filename);
-      collections.add(collection);
+      await Deno.rename(tmpIndex, this.dbFilePath);
+
+      await this.truncate(); // resets WAL
+    } catch (e) {
+      console.error(e);
     }
-
-    const tmpIndex = await Deno.makeTempFile({ prefix: `petitedb-index` });
-
-    await Deno.writeTextFile(
-      tmpIndex,
-      JSON.stringify([...collections.values()]),
-    );
-    await Deno.rename(tmpIndex, this.dbFilePath);
-
-    await this.truncate(); // resets WAL
 
     this.lock = false;
   }
@@ -321,34 +310,35 @@ export class PetiteDB<C extends string> {
 
     try {
       if (!this.data[collection]) {
-        this.data[collection] = new Map();
+        this.index[collection] = new Map();
+        this.data[collection] = [];
       }
 
-      let data = record;
-      if (this.data[collection].has(uuid)) {
+      if (this.index[collection].has(uuid)) {
         throw new Error(`${this.dbFilePath} Record '${uuid}' already exists`);
       }
-      data = { _id: uuid, ...record };
 
-      if (!skipWAL) {
-        await this.append({
-          op: "insert",
-          collection,
-          data,
-        });
-      }
+      const data = { ...record, _id: uuid };
+
+      await this.append({
+        op: "insert",
+        collection,
+        data,
+      }, skipWAL);
 
       const ts = new Date().getTime();
-      this.data[collection].set(uuid, {
+      const input = {
         _meta: { createdAt: ts, updatedAt: ts, version: "0" },
         record: data,
-      });
+      };
+
+      this.index[collection].set(uuid, input);
+      this.data[collection].push(input);
 
       if (this.autoCommit) {
         await this.commit();
-        if (!skipWAL) {
-          await this.truncate();
-        }
+
+        await this.truncate(skipWAL);
       }
 
       return uuid;
@@ -373,7 +363,7 @@ export class PetiteDB<C extends string> {
     }
     try {
       this.check(collection);
-      return this.data[collection]?.get(_id) as DatabaseRowReturn<T> || null;
+      return this.index[collection]?.get(_id) as DatabaseRowReturn<T> || null;
     } finally {
       this.unlockResource(collection, _id);
     }
@@ -418,41 +408,40 @@ export class PetiteDB<C extends string> {
     }
     try {
       this.check(collection);
-      if (!this.data[collection]?.has(query._id)) {
+      if (!this.index[collection]?.has(query._id)) {
         return false;
       } // Record does not exist
 
       const data = {
-        ...this.data[collection].get(query._id)!.record,
+        ...this.index[collection].get(query._id)!.record,
         ...record,
       };
 
-      if (!skipWAL) {
-        await this.append({
-          op: "update",
-          collection,
-          data,
-          query,
-        });
-      }
+      await this.append({
+        op: "update",
+        collection,
+        data,
+        query,
+      }, skipWAL);
 
       const ts = new Date().getTime();
-      this.data[collection].set(query._id, {
+      const input = {
         _meta: {
-          ...this.data[collection].get(query._id)!._meta,
+          ...this.index[collection].get(query._id)!._meta,
           updatedAt: ts,
           version: incrementHexVersion(
-            this.data[collection].get(query._id)!._meta.version || "0",
+            this.index[collection].get(query._id)!._meta.version || "0",
           ),
         },
         record: data,
-      });
+      };
+
+      this.index[collection].set(query._id, input);
+      this.data[collection].push(input);
 
       if (this.autoCommit) {
         await this.commit();
-        if (!skipWAL) {
-          await this.truncate();
-        }
+        await this.truncate(skipWAL);
       }
 
       return true;
@@ -478,25 +467,25 @@ export class PetiteDB<C extends string> {
     }
     try {
       this.check(collection);
-      if (!this.data[collection]?.has(_id)) {
+      if (!this.index[collection]?.has(_id)) {
         return false;
       } // Record does not exist
 
-      if (!skipWAL) {
-        await this.append({
-          op: "delete",
-          collection,
-          query: { _id },
-        });
-      }
+      await this.append({
+        op: "delete",
+        collection,
+        query: { _id },
+      }, skipWAL);
 
-      this.data[collection].delete(_id);
+      this.index[collection].delete(_id);
+      this.data[collection] = this.data[collection].filter((r) =>
+        r.record._id !== _id
+      );
 
       if (this.autoCommit) {
         await this.commit();
-        if (!skipWAL) {
-          await this.truncate();
-        }
+
+        await this.truncate(skipWAL);
       }
 
       return true;
@@ -538,58 +527,64 @@ export class PetiteDB<C extends string> {
     query: { _id: string },
     record: T,
     { skipWAL }: { skipWAL?: boolean } = {},
-  ): Promise<boolean> {
+  ): Promise<string> {
     if (!this.lockResource(collection, query._id)) {
       throw new Error("Resource is locked");
     }
     try {
       this.check(collection);
-      if (!this.data[collection]) {
-        this.data[collection] = new Map();
+      if (!this.index[collection]) {
+        this.index[collection] = new Map();
+        this.data[collection] = [];
       }
 
-      if (!this.data[collection].has(query._id)) {
-        await this.create(collection, record);
-        return true;
+      if (!this.index[collection].has(query._id)) {
+        const id = await this.create(collection, record);
+        return id;
       }
 
-      let data = { ...this.data[collection].get(query._id)!.record, ...record };
-
-      data = {
-        ...this.data[collection].get(query._id)!.record,
+      let data = {
+        ...this.index[collection].get(query._id)!.record,
         ...record,
       };
 
-      if (!skipWAL) {
-        await this.append({
-          op: "update",
-          collection,
-          data,
-          query,
-        });
-      }
+      data = {
+        ...this.index[collection].get(query._id)!.record,
+        ...record,
+      };
+
+      await this.append({
+        op: "update",
+        collection,
+        data,
+        query,
+      }, skipWAL);
 
       const ts = new Date().getTime();
-      this.data[collection].set(query._id, {
+      const input = {
         _meta: {
-          ...this.data[collection].get(query._id)!._meta,
+          ...this.index[collection].get(query._id)!._meta,
           updatedAt: ts,
           createdAt: ts,
           version: incrementHexVersion(
-            this.data[collection].get(query._id)!._meta.version || "0",
+            this.index[collection].get(query._id)!._meta.version || "0",
           ),
         },
         record: data,
-      });
+      };
+      this.index[collection].set(query._id, input);
+      const index = this.data[collection].findIndex((row) =>
+        row.record._id === query._id
+      );
+      this.data[collection][index] = input;
 
       if (this.autoCommit) {
         await this.commit();
-        if (!skipWAL) {
-          await this.truncate();
-        }
+
+        await this.truncate(skipWAL);
       }
 
-      return true;
+      return query._id;
     } finally {
       this.unlockResource(collection, query._id);
     }
@@ -697,8 +692,9 @@ export class PetiteDB<C extends string> {
    * @param collection
    */
   public async drop(collection: C): Promise<void> {
-    if (this.data[collection]) {
-      this.data[collection].clear();
+    if (this.index[collection]) {
+      this.index[collection].clear();
+      this.data[collection] = [];
     }
     if (this.autoCommit) {
       await this.commit();
@@ -708,8 +704,8 @@ export class PetiteDB<C extends string> {
   /**
    * Append an operation to the WAL before applying it.
    */
-  async append(entry: WALEntry): Promise<void> {
-    if (this.walLogPath) {
+  async append(entry: WALEntry, skipWAL = false): Promise<void> {
+    if (this.walLogPath && !skipWAL) {
       const line = JSON.stringify(entry, replacer) + "\n";
       await appendFile(this.walLogPath, line, "utf8");
     }
@@ -718,8 +714,8 @@ export class PetiteDB<C extends string> {
   /**
    * Truncate the WAL file after successful commit.
    */
-  async truncate(): Promise<void> {
-    if (this.walLogPath) {
+  async truncate(skipWAL = false): Promise<void> {
+    if (this.walLogPath && !skipWAL) {
       await writeFile(this.walLogPath, "", "utf8");
     }
   }
@@ -794,30 +790,27 @@ export class PetiteDB<C extends string> {
     };
   }
 
+  public async shutdown() {
+    console.log("[Shutdown] Flushing database before exit...");
+    try {
+      if (this.autoCommit) {
+        await this.flush();
+        console.log("[Shutdown] Flush complete.");
+      }
+    } catch (err) {
+      console.error("[Shutdown] Failed to flush database:", err);
+    } finally {
+      console.log("[Shutdown] Complete");
+      Deno.exit();
+    }
+  }
+
   /**
    * Setup shutdown hook to automatically flush the database (when autoCommit is true)
    */
   private setupShutdownHook() {
-    const shutdown = async () => {
-      console.log("[Shutdown] Flushing database before exit...");
-      try {
-        if (this.autoCommit) {
-          await this.flush();
-          console.log("[Shutdown] Flush complete.");
-        }
-      } catch (err) {
-        console.error("[Shutdown] Failed to flush database:", err);
-      } finally {
-        Deno.exit();
-      }
-    };
-
-    addEventListener("unload", async () => {
-      await shutdown();
-    });
-
     for (const signal of ["SIGINT", "SIGTERM"] as const) {
-      Deno.addSignalListener(signal, shutdown);
+      Deno.addSignalListener(signal, this.shutdown);
     }
   }
 }

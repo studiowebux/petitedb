@@ -40,7 +40,7 @@ console.log("databaseDump", databaseDump);
 console.time("mutate on disk");
 
 // Save on-disk immediately (not recommended for heavy load)
-await db.flush();
+await db.shutdown();
 
 console.timeEnd("mutate on disk");
 
