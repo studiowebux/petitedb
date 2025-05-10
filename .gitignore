@@ -1,3 +1,8 @@
 .DS_Store
 results/
 reload.db.json
+types.db.json
+wal.log
+wal/*.wal.log
+demo/*/db/
+demo/*/wal/

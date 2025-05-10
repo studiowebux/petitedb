@@ -19,18 +19,19 @@
 
 - Manage data in memory
 - Store and load data securely to/from a JSON file
+- Uses Write-Ahead Logging (WAL) to increase performance
 - Core operations:
   - Create, update, upsert, delete records
   - Drop Collection
-  - Read, Read all and find specific records
+  - Count, Read, Read all and Find specific records
+  - Retrieve configurable amount of random records (`sample()`)
   - Snapshot and Clear data
-  - Retrieve the raw data using GetData
+  - Retrieve the raw data using `GetData`
   - Option to automatically add a `_id` per record
-  - Option to manually save the data to disk
-  - Retrieve configurable amount of random records
+  - Option to manually commit the data to disk
   - Option to watch local DB File and reload content automatically when its content is modified
-  - Support Types: Data and Collections
-- Ideal for test and offline applications
+  - Support Typescript Types: *Data* (`RecordType`) and *Collections* (`string`)
+- Ideal for test, offline applications and Proof-of-Concept
 
 ---
 
@@ -38,58 +39,13 @@
 
 1. Install deno: https://deno.com
 2. `deno add @studiowebux/petitedb`
-3. `import { PetiteDB } from "@studiowebux/petitedb";`
+3. `import { PetiteDB } from "@studiowebux/petitedb@^2.0.0";`
+
+> Version 2.0.0+ has breaking changes.
 
 **Example:**
 
-*See `__tests__` directory for more examples.*
-
-```ts
-import { PetiteDB } from "@studiowebux/petitedb";
-
-const db = new PetiteDB("database.json");
-
-// Collection name: Category
-// Record id: shoes
-db.create("category", "shoes", { name: "Shoe" });
-db.upsert("category", "shoes", { name: "shoes" });
-db.update("category", "shoes", { name: "Shoes" });
-db.read("category", "shoes");
-db.readAll("category");
-db.find("category", { name: "Shoes" });
-db.delete("category", "shoes");
-db.drop("category");
-db.clear();
-```
-
-```ts
-const db1 = new PetiteDB("autoid.json");
-
-db1.upsert("movies", "movie1", { title: "test 1" });
-db1.upsert("movies", "movie2", { title: "test 2" });
-db1.upsert("movies", "movie3", { title: "test 3" });
-console.log(db1.readAll("movies"));
-```
-
-```ts
-type Collections = "account" | "profile" | "organization"
-type Account = {
-  email: string
-}
-
-const db = new PetiteDB<Collections>("db.json");
-
-db.create("accounts", "1", {email: "tommy@studiowebux.com"});
-const account = db.read<Account>("accounts", "1");
-console.log(account?.email)
-```
-
-### Releases and Github Actions
-
-```bash
-git tag -a X.Y.Z -m "Version X.Y.Z"
-git push origin tags/X.Y.Z
-```
+see `demo/` directory, there are 3 examples.
 
 ---
 
