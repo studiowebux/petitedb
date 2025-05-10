@@ -36,6 +36,9 @@
 - Ideal for test, offline applications and Proof-of-Concept
 - Support Saving BigInt in JSON file
 - Added `_meta` object for each record (not implemented)
+  - createdAt
+  - updatedAt
+  - Version (increase when update and upsert)
 - Collection data is split into individual files.
 
 ---

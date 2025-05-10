@@ -25,6 +25,6 @@ await Promise.all(
 );
 console.timeEnd("generator");
 
-await db.flush();
+// await db.flush();
 
 console.timeEnd("total");
