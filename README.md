@@ -30,7 +30,7 @@
   - Option to automatically add a `_id` per record
   - Option to manually commit the data to disk
   - Option for In-Memory Only
-  - Support Typescript Types: _Data_ (`RecordType`) and _Collections_ (`string`)
+  - Support Typescript Types: _Data_ (`Schema`) and _Collections_ (`string`)
 - Ideal for test, offline applications and Proof-of-Concept
 - Support Saving BigInt in JSON file
 - Added `_meta` object for each record (not implemented)
@@ -46,7 +46,7 @@
 
 1. Install deno: https://deno.com
 2. `deno add @studiowebux/petitedb`
-3. `import { PetiteDB } from "@studiowebux/petitedb@^2.0.0";`
+3. `import { PetiteDB } from "@studiowebux/petitedb@^2.1.0";`
 
 >  Version 2.0.0+ has breaking changes.
 

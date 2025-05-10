@@ -5,14 +5,12 @@ import { TextLineStream } from "@std/streams";
 import { JsonParseStream } from "@std/json";
 import { hrtime } from "node:process";
 
-type LockType = "collection" | "row";
-
-type Collection = string;
-
+export type LockType = "collection" | "row";
+export type Collection = string;
 // deno-lint-ignore no-explicit-any
-type Schema = Record<string, any>;
+export type Schema = Record<string, any>;
 
-type Meta = {
+export type Meta = {
   pk?: string;
   sk?: string;
   readonly?: string[];
@@ -22,15 +20,15 @@ type Meta = {
   version: string;
 };
 
-type DatabaseRow = {
+export type DatabaseRow = {
   record: Schema;
   _meta: Meta;
 };
-type DatabaseRowReturn<T> = DatabaseRow & { record: T & Schema };
-type DatabaseDataType = Record<Collection, DatabaseRow[]>;
-type DatabaseIndexType = Record<Collection, Map<string, DatabaseRow>>;
+export type DatabaseRowReturn<T> = DatabaseRow & { record: T & Schema };
+export type DatabaseDataType = Record<Collection, DatabaseRow[]>;
+export type DatabaseIndexType = Record<Collection, Map<string, DatabaseRow>>;
 
-type WALEntry = {
+export type WALEntry = {
   op: "insert" | "update" | "delete";
   collection: string;
   id?: string; // @deprecated
