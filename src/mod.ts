@@ -1,14 +1,31 @@
 import { appendFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { basename, extname } from "node:path";
+import { basename, dirname, extname, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { TextLineStream } from "@std/streams";
 import { JsonParseStream } from "@std/json";
 
-// deno-lint-ignore no-explicit-any
-type RecordType = Record<string, any>;
-type DatabaseType = Record<string, RecordType>;
 type LockType = "collection" | "row";
+
+type Id = string;
+type Collection = string;
+
+// deno-lint-ignore no-explicit-any
+type Schema = Record<string, any>;
+
+type DatabaseRow = {
+  record: Schema;
+  _meta: {
+    pk?: string;
+    sk?: string;
+    readonly?: string[];
+    schema?: Record<string, string>;
+  };
+};
+type DatabaseRowReturn<T> = DatabaseRow & { record: T & Schema };
+type KeyRecord = Record<Id, DatabaseRow>;
+type DatabaseDataType = Record<Collection, KeyRecord>;
+
 type WALEntry = {
   op: "insert" | "update" | "delete";
   collection: string;
@@ -17,6 +34,9 @@ type WALEntry = {
   query?: unknown;
 };
 
+export const replacer = (_key: unknown, value: unknown): unknown =>
+  typeof value === "bigint" ? value.toString() : value;
+
 /**
  * PetiteDB is a simple in-memory database with file persistence using JSON.
  *
@@ -24,7 +44,7 @@ type WALEntry = {
  */
 export class PetiteDB<C extends string> {
   private dbFilePath: string;
-  private data: DatabaseType;
+  private data: DatabaseDataType;
   private lock: boolean;
 
   private autoId: boolean;
@@ -38,6 +58,8 @@ export class PetiteDB<C extends string> {
   private maxWritesBeforeFlush: number;
   private saveQueue: Promise<void> = Promise.resolve();
 
+  private memoryOnly: boolean;
+
   /**
    * Constructs a new instance of PetiteDB with the given file path.
    *
@@ -48,6 +70,7 @@ export class PetiteDB<C extends string> {
    * @param {boolean} [options.watch=false] [default: false] - (Experimental/Unstable) If true, It sets a fs watch to reload the db file when modified.
    * @param {boolean} [options.walLogPath="db_name.wal.log"] [default: "db_name.wal.log"] - Can rename the WAL file
    * @param {boolean} [options.maxWritesBeforeFlush=100] [default: 100] - Number of entries before saving on-disk
+   * @param {boolean} [options.memoryOnly=false] [default: false] - Ephemeral DB only
    *
    * @class PetiteDB
    */
@@ -59,9 +82,12 @@ export class PetiteDB<C extends string> {
       watch?: boolean;
       walLogPath?: string;
       maxWritesBeforeFlush?: number;
+      memoryOnly?: boolean;
     },
   ) {
+    Deno.mkdirSync(dirname(filePath), {recursive: true})
     this.dbFilePath = filePath;
+
     this.data = {};
     this.lock = false;
 
@@ -76,20 +102,26 @@ export class PetiteDB<C extends string> {
       this.watch();
     }
 
-    Deno.mkdirSync("wal", { recursive: true });
-    this.walLogPath = options?.walLogPath ||
-      `wal/${basename(filePath, extname(filePath))}.wal.log`;
-
     this.writeCount = 0;
     this.maxWritesBeforeFlush = options?.maxWritesBeforeFlush || 100;
 
-    this.setupShutdownHook();
+    if (options?.memoryOnly === true) {
+      this.memoryOnly = true;
+    } else {
+      this.memoryOnly = false;
+
+      Deno.mkdirSync("wal", { recursive: true });
+      this.walLogPath = options?.walLogPath ||
+        `wal/${basename(filePath, extname(filePath))}.wal.log`;
+
+      this.setupShutdownHook();
+    }
   }
 
   /**
    * Returns the in memory data
    */
-  public GetData(): DatabaseType {
+  public GetData(): DatabaseDataType {
     return this.data;
   }
 
@@ -99,6 +131,11 @@ export class PetiteDB<C extends string> {
    * Create database if empty
    */
   public async load(): Promise<void> {
+    if (this.memoryOnly === true) {
+      this.data = {};
+      return;
+    }
+
     if (existsSync(this.dbFilePath)) {
       const fileData = Deno.readTextFileSync(this.dbFilePath);
       try {
@@ -117,13 +154,6 @@ export class PetiteDB<C extends string> {
         await this.truncate();
         // console.log("WAL Restored");
       }
-    } else {
-      // console.log("Creating empty database");
-      // Create initial state.
-      Deno.writeTextFileSync(
-        this.dbFilePath,
-        JSON.stringify(this.data, null, 2),
-      );
     }
 
     console.log("Database is ready");
@@ -176,16 +206,24 @@ export class PetiteDB<C extends string> {
    */
   public async flush(): Promise<void> {
     while (this.lock) {
-      console.warn("[Flush] Database is locked or inaccessible");
+      // console.warn("[Flush] Database is locked or inaccessible");
     }
 
     this.lock = true;
-    const tmp = await Deno.makeTempFile({ prefix: "petitedb" });
-    // FIXME: Next optimization is to get rid of JSON format; cause it increases considerably the time to write on-disk
-    // The reason of this project is to allow an easy and intuitive way to view and edit json data for a POC.
-    await Deno.writeTextFile(tmp, JSON.stringify(this.data, null, 2));
-    await Deno.rename(tmp, this.dbFilePath);
+
+    for (const [collection, rows] of Object.entries(this.data)) {
+      const filename = `${dirname(this.dbFilePath)}${sep}${
+        basename(this.dbFilePath, extname(this.dbFilePath))
+      }.${collection}.json`;
+      const tmp = await Deno.makeTempFile({ prefix: `petitedb-${collection}` });
+      // FIXME: Next optimization is to get rid of JSON format; cause it increases considerably the time to write on-disk
+      // The reason of this project is to allow an easy and intuitive way to view and edit json data for a POC.
+      await Deno.writeTextFile(tmp, JSON.stringify(rows, replacer));
+      await Deno.rename(tmp, filename);
+    }
+    
     await this.truncate(); // resets WAL
+
     this.lock = false;
   }
 
@@ -244,10 +282,10 @@ export class PetiteDB<C extends string> {
    *
    * @param {string} collection - The name of the collection.
    * @param {string} id - The unique identifier for the record.
-   * @param {RecordType} record - The data for the new record.
+   * @param {Schema} record - The data for the new record.
    * @return {boolean} True if the record was created successfully, false otherwise.
    */
-  public async create<T extends RecordType>(
+  public async create<T extends Schema>(
     collection: C,
     id: string,
     record: T,
@@ -280,7 +318,7 @@ export class PetiteDB<C extends string> {
         id,
       });
 
-      this.data[collection][id] = data;
+      this.data[collection][id] = { _meta: {}, record: data };
 
       if (this.autoCommit) {
         await this.commit();
@@ -298,15 +336,18 @@ export class PetiteDB<C extends string> {
    *
    * @param {string} collection - The name of the collection.
    * @param {string} id - The unique identifier for the record.
-   * @return {(RecordType | null)} The retrieved record, or null if not found.
+   * @return {(DatabaseRowReturn<T> | null)} The retrieved record, or null if not found.
    */
-  public read<T extends RecordType>(collection: C, id: string): T | null {
+  public read<T extends Schema>(
+    collection: C,
+    id: string,
+  ): DatabaseRowReturn<T> | null {
     if (!this.lockResource(collection, id)) {
       throw new Error("Resource is locked");
     }
     try {
       this.check(collection);
-      return this.data[collection]?.[id] || null;
+      return this.data[collection]?.[id] as DatabaseRowReturn<T> || null;
     } finally {
       this.unlockResource(collection, id);
     }
@@ -316,15 +357,18 @@ export class PetiteDB<C extends string> {
    * Retrieves all records from the specified collection.
    *
    * @param {string} collection - The name of the collection.
-   * @return {(RecordType[] | null)} The retrieved record, or null if not found.
+   * @return {(DatabaseRowReturn<T>[] | null)} The retrieved record, or null if not found.
    */
-  public readAll<T extends RecordType>(collection: C): T[] | null {
+  public readAll<T extends Schema>(
+    collection: C,
+  ): DatabaseRowReturn<T>[] | null {
     if (!this.lockResource(collection)) {
       throw new Error("Resource is locked");
     }
     try {
       this.check(collection);
-      return Object.values(this.data[collection]) || null;
+      return Object.values(this.data[collection]) as DatabaseRowReturn<T>[] ||
+        null;
     } finally {
       this.unlockResource(collection);
     }
@@ -335,10 +379,10 @@ export class PetiteDB<C extends string> {
    *
    * @param {string} collection - The name of the collection.
    * @param {string} id - The unique identifier for the record.
-   * @param {Partial<RecordType>} record - The new data for the record (only updated fields).
+   * @param {Partial<Schema>} record - The new data for the record (only updated fields).
    * @return {boolean} True if the record was updated successfully, false otherwise.
    */
-  public async update<T extends RecordType>(
+  public async update<T extends Schema>(
     collection: C,
     id: string,
     record: Partial<T>,
@@ -352,7 +396,7 @@ export class PetiteDB<C extends string> {
         return false;
       } // Record does not exist
 
-      const data = { ...this.data[collection][id], ...record };
+      const data = { ...this.data[collection][id].record, ...record };
 
       await this.append({
         op: "update",
@@ -361,7 +405,7 @@ export class PetiteDB<C extends string> {
         id,
       });
 
-      this.data[collection][id] = data;
+      this.data[collection][id] = { _meta: {}, record: data };
 
       if (this.autoCommit) {
         await this.commit();
@@ -417,15 +461,15 @@ export class PetiteDB<C extends string> {
    * @param key [default: id] - uses this key to delete the item
    * @returns {number} number of item deleted
    */
-  public async findAndDelete<T extends RecordType>(
+  public async findAndDelete<T extends Schema>(
     collection: C,
     query: Partial<T>,
     key: string = "id",
   ): Promise<number> {
-    const rows = this.find(collection, query);
+    const rows = this.find<T>(collection, query);
 
     for (const row of rows) {
-      await this.delete(collection, row[key]);
+      await this.delete(collection, row.record[key]);
     }
 
     return rows.length;
@@ -436,9 +480,9 @@ export class PetiteDB<C extends string> {
    *
    * @param {string} collection - The name of the collection.
    * @param {string} id - The unique identifier for the record.
-   * @param {RecordType} record - The new data for the record.
+   * @param {Schema} record - The new data for the record.
    */
-  public async upsert<T extends RecordType>(
+  public async upsert<T extends Schema>(
     collection: C,
     id: string,
     record: T,
@@ -450,9 +494,9 @@ export class PetiteDB<C extends string> {
       this.check(collection);
       if (!this.data[collection]) this.data[collection] = {};
 
-      let data = { ...this.data[collection][id], ...record };
+      let data = { ...this.data[collection][id].record, ...record };
 
-      if (this.autoId && !this.data[collection]?.[id]?._id) {
+      if (this.autoId && !this.data[collection]?.[id]?.record._id) {
         const uuid = crypto.randomUUID();
         if (this.data[collection][uuid]) {
           console.error(`${this.dbFilePath} Record '${uuid}' already exists`);
@@ -460,7 +504,7 @@ export class PetiteDB<C extends string> {
         }
         data = {
           _id: uuid,
-          ...this.data[collection][id],
+          ...this.data[collection][id].record,
           ...record,
         };
       }
@@ -472,7 +516,7 @@ export class PetiteDB<C extends string> {
         id,
       });
 
-      this.data[collection][id] = data;
+      this.data[collection][id] = { _meta: {}, record: data };
 
       if (this.autoCommit) {
         await this.commit();
@@ -491,7 +535,7 @@ export class PetiteDB<C extends string> {
    * @param query
    * @returns {number}
    */
-  public count<T extends RecordType>(collection: C, query: Partial<T>): number {
+  public count<T extends Schema>(collection: C, query: Partial<T>): number {
     const rows = this.find<T>(collection, query);
     return rows.length;
   }
@@ -500,19 +544,19 @@ export class PetiteDB<C extends string> {
    * Finds records in the specified collection that match the provided query criteria.
    *
    * @param {string} collection - The name of the collection.
-   * @param {Partial<RecordType>} query - The query criteria to match records against.
-   * @return {RecordType[]} An array of matching records, or an empty array if no matches are found.
+   * @param {Partial<Schema>} query - The query criteria to match records against.
+   * @return {DatabaseRow[]} An array of matching records, or an empty array if no matches are found.
    */
-  public find<T extends RecordType>(
+  public find<T extends Schema>(
     collection: C,
     query: Partial<T>,
-  ): T[] {
+  ): DatabaseRowReturn<T>[] {
     if (!this.lockResource(collection)) {
       throw new Error("Resource is locked");
     }
     try {
       this.check(collection);
-      const results: T[] = [];
+      const results: DatabaseRowReturn<T>[] = [];
       const records = this.data[collection];
       if (!records) return results;
       for (const key in records) {
@@ -523,13 +567,13 @@ export class PetiteDB<C extends string> {
           matches = true;
         } else {
           for (const field in query) {
-            if (record[field] !== query[field]) {
+            if (record.record[field] !== query[field]) {
               matches = false;
               break;
             }
           }
         }
-        if (matches) results.push(record);
+        if (matches) results.push(record as DatabaseRowReturn<T>);
       }
       return results;
     } finally {
@@ -542,18 +586,18 @@ export class PetiteDB<C extends string> {
    * @param collection
    * @param query
    * @param length
-   * @returns  {Array<RecordType|null>}
+   * @returns  {Array<Schema|null>}
    */
-  public sample<T extends RecordType>(
+  public sample<T extends Schema>(
     collection: C,
     query: Partial<T>,
     length: number = 1,
-  ): Array<T | null> {
-    const results = this.find<T>(collection, query);
+  ): Array<DatabaseRow | null> {
+    const results: DatabaseRow[] = this.find<T>(collection, query);
     if (!results) {
       return [];
     }
-    const selection: Array<T | null> = [];
+    const selection: Array<DatabaseRow | null> = [];
     for (let i = 0; i < length; i++) {
       if (results.length <= 0) {
         selection.push(null);
@@ -600,7 +644,7 @@ export class PetiteDB<C extends string> {
    */
   async append(entry: WALEntry): Promise<void> {
     if (this.walLogPath) {
-      const line = JSON.stringify(entry) + "\n";
+      const line = JSON.stringify(entry, replacer) + "\n";
       await appendFile(this.walLogPath, line, "utf8");
     }
   }
@@ -665,7 +709,7 @@ export class PetiteDB<C extends string> {
           await db.create(
             entry.collection as C,
             entry.id,
-            entry.data as RecordType,
+            entry.data as Schema,
           );
 
           return;
@@ -673,7 +717,7 @@ export class PetiteDB<C extends string> {
           await db.update(
             entry.collection as C,
             entry.id,
-            entry.data as RecordType,
+            entry.data as Schema,
           );
           return;
         case "delete":

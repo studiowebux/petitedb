@@ -31,8 +31,12 @@
   - Option to manually commit the data to disk
   - Option to watch local DB File and reload content automatically when its
     content is modified
+  - Option for In-Memory Only
   - Support Typescript Types: _Data_ (`RecordType`) and _Collections_ (`string`)
 - Ideal for test, offline applications and Proof-of-Concept
+- Support Saving BigInt in JSON file
+- Added `_meta` object for each record (not implemented)
+- Collection data is split into individual files.
 
 ---
 
@@ -46,7 +50,7 @@
 
 **Example:**
 
-see `demo/` directory, there are 3 examples.
+see `demo/` directory, there are many examples.
 
 ---
 
