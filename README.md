@@ -29,8 +29,9 @@
   - Retrieve the raw data using `GetData`
   - Option to automatically add a `_id` per record
   - Option to manually commit the data to disk
-  - Option to watch local DB File and reload content automatically when its content is modified
-  - Support Typescript Types: *Data* (`RecordType`) and *Collections* (`string`)
+  - Option to watch local DB File and reload content automatically when its
+    content is modified
+  - Support Typescript Types: _Data_ (`RecordType`) and _Collections_ (`string`)
 - Ideal for test, offline applications and Proof-of-Concept
 
 ---
@@ -41,7 +42,7 @@
 2. `deno add @studiowebux/petitedb`
 3. `import { PetiteDB } from "@studiowebux/petitedb@^2.0.0";`
 
-> Version 2.0.0+ has breaking changes.
+>  Version 2.0.0+ has breaking changes.
 
 **Example:**
 

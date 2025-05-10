@@ -210,9 +210,9 @@ function getRandomInt(min: number, max: number) {
   return Math.floor(Math.random() * (maxFloored - minCeiled) + minCeiled); // The maximum is exclusive and the minimum is inclusive
 }
 
-export function nameGenerator(): string{
-    const firstnameIndex= getRandomInt(0, firstnames.length) 
-    const lastnameIndex= getRandomInt(0, lastnames.length) 
+export function nameGenerator(): string {
+  const firstnameIndex = getRandomInt(0, firstnames.length);
+  const lastnameIndex = getRandomInt(0, lastnames.length);
 
-    return `${firstnames[firstnameIndex]} ${lastnames[lastnameIndex]}`
+  return `${firstnames[firstnameIndex]} ${lastnames[lastnameIndex]}`;
 }

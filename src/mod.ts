@@ -491,7 +491,7 @@ export class PetiteDB<C extends string> {
    * @param query
    * @returns {number}
    */
-  public count<T extends RecordType>(collection: C, query: Partial<T>) {
+  public count<T extends RecordType>(collection: C, query: Partial<T>): number {
     const rows = this.find<T>(collection, query);
     return rows.length;
   }

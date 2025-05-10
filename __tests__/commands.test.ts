@@ -147,8 +147,10 @@ Deno.test(
   "Create 10000 entries without auto commit and without commit, stays in WAL and gonna be restore next start",
   async () => {
     try {
-      Deno.writeTextFileSync("wal/cc4.wal.log", "")
-    }catch{}
+      Deno.writeTextFileSync("wal/cc4.wal.log", "");
+    } catch {
+      // do nothing for this test
+    }
     const db1 = new PetiteDB<"moviesCC">("results/cc4.json", {
       autoId: true,
       autoCommit: false,
