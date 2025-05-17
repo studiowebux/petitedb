@@ -120,8 +120,6 @@ export class PetiteDB<C extends string> {
       Deno.mkdirSync("wal", { recursive: true });
       this.walLogPath = options?.walLogPath ||
         `wal/${basename(filePath, extname(filePath))}.wal.log`;
-
-      this.setupShutdownHook();
     }
 
     this.logger = new Logger({
@@ -817,15 +815,6 @@ export class PetiteDB<C extends string> {
     } finally {
       this.logger.info("[Shutdown] Complete");
       Deno.exit(0);
-    }
-  }
-
-  /**
-   * Setup shutdown hook to automatically flush the database (when autoCommit is true)
-   */
-  private setupShutdownHook() {
-    for (const signal of ["SIGINT", "SIGTERM"] as const) {
-      Deno.addSignalListener(signal, this.shutdown);
     }
   }
 }

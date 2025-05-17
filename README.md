@@ -55,6 +55,16 @@
 
 see `demo/` directory, there are many examples.
 
+**Clean Shutdown**
+
+```ts
+const db = new PetiteDB(...);
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+    Deno.addSignalListener(signal, db.shutdown);
+}
+```
+
 ---
 
 ## Contributing
