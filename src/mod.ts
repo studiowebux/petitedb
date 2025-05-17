@@ -1,9 +1,12 @@
+import { hrtime } from "node:process";
 import { appendFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, sep } from "node:path";
 import { randomUUID } from "node:crypto";
+
 import { TextLineStream } from "@std/streams";
 import { JsonParseStream } from "@std/json";
-import { hrtime } from "node:process";
+
+import Logger from "@studiowebux/deno-minilog";
 
 export type LockType = "collection" | "row";
 export type Collection = string;
@@ -67,6 +70,8 @@ export class PetiteDB<C extends string> {
 
   private memoryOnly: boolean;
 
+  private logger: Logger;
+
   /**
    * Constructs a new instance of PetiteDB with the given file path.
    *
@@ -76,6 +81,7 @@ export class PetiteDB<C extends string> {
    * @param {boolean} [options.walLogPath="db_name.wal.log"] [default: "db_name.wal.log"] - Can rename the WAL file
    * @param {boolean} [options.maxWritesBeforeFlush=100] [default: 100] - Number of entries before saving on-disk
    * @param {boolean} [options.memoryOnly=false] [default: false] - Ephemeral DB only
+   * @param {boolean} [options.verbose=false] [default: false] - Enables logs
    *
    * @class PetiteDB
    */
@@ -86,6 +92,7 @@ export class PetiteDB<C extends string> {
       walLogPath?: string;
       maxWritesBeforeFlush?: number;
       memoryOnly?: boolean;
+      verbose?: boolean;
     },
   ) {
     Deno.mkdirSync(dirname(filePath), { recursive: true });
@@ -102,8 +109,6 @@ export class PetiteDB<C extends string> {
       ? true
       : options?.autoCommit;
 
-
-
     this.writeCount = 0;
     this.maxWritesBeforeFlush = options?.maxWritesBeforeFlush || 100;
 
@@ -118,6 +123,15 @@ export class PetiteDB<C extends string> {
 
       this.setupShutdownHook();
     }
+
+    this.logger = new Logger({
+      info: true,
+      error: true,
+      debug: options?.verbose === true ? true : false,
+      verbose: options?.verbose === true ? true : false,
+      warn: options?.verbose === true ? true : false,
+      trace: options?.verbose === true ? true : false,
+    });
   }
 
   /**
@@ -134,6 +148,7 @@ export class PetiteDB<C extends string> {
    */
   public async load(): Promise<void> {
     if (this.memoryOnly === true) {
+      this.logger.verbose("Setup in-memory only database");
       this.data = {};
       this.index = {};
       return;
@@ -142,9 +157,11 @@ export class PetiteDB<C extends string> {
     const start = hrtime();
     try {
       const collections = Deno.readTextFileSync(this.dbFilePath);
-      const collectionsArray = JSON.parse(collections);
+      const collectionsArray: string[] = JSON.parse(collections);
+      this.logger.verbose(`Found ${collectionsArray.join(",")}`);
 
       for (const collection of collectionsArray) {
+        this.logger.verbose(`Load ${collection} file in-memory `);
         const filename = `${dirname(this.dbFilePath)}${sep}${
           basename(this.dbFilePath, extname(this.dbFilePath))
         }.${collection}.json`;
@@ -156,23 +173,26 @@ export class PetiteDB<C extends string> {
           data.map((row) => [row.record._id, row]),
         );
       }
-    } catch (_) {
-      // console.error((e as Error).message);
-      console.log("Rebuilding file structure using an empty database.");
+    } catch (e) {
+      this.logger.warn((e as Error).message);
+      this.logger.info("Rebuilding file structure using an empty database.");
       this.data = {};
     }
-    // console.log("Database loaded");
+
+    this.logger.verbose("Database Loaded");
 
     if (this.walLogPath) {
-      // console.log("Restoring WAL");
+      this.logger.verbose("Restoring WAL");
       await this.replay(this.defaultApply(this));
       await this.flush();
-      await this.truncate();
-      // console.log("WAL Restored");
+
+      this.logger.verbose("WAL restored");
     }
     const end = hrtime(start);
 
-    console.log(`Database is ready in ${end[0] + end[1] / Math.pow(10, 9)}ms`);
+    this.logger.info(
+      `Database is ready in ${end[0] + end[1] / Math.pow(10, 9)}ms`,
+    );
   }
 
   /**
@@ -186,7 +206,7 @@ export class PetiteDB<C extends string> {
           await this.flush(); // writes full DB and truncates WAL
         }
       } catch (err) {
-        console.error("[commit] WAL write failed:", err);
+        this.logger.error("[commit] WAL write failed:", err);
       }
     });
 
@@ -198,7 +218,7 @@ export class PetiteDB<C extends string> {
    */
   public async flush(): Promise<void> {
     while (this.lock) {
-      // console.warn("[Flush] Database is locked or inaccessible");
+      this.logger.warn("[Flush] Database is locked or inaccessible");
     }
 
     this.lock = true;
@@ -292,7 +312,6 @@ export class PetiteDB<C extends string> {
    * Creates a new record in the specified collection.
    *
    * @param {string} collection - The name of the collection.
-   * @param {string} id - The unique identifier for the record.
    * @param {Schema} record - The data for the new record.
    * @return {string} new id
    */
@@ -335,8 +354,6 @@ export class PetiteDB<C extends string> {
 
       if (this.autoCommit) {
         await this.commit();
-
-        await this.truncate(skipWAL);
       }
 
       return uuid;
@@ -349,7 +366,7 @@ export class PetiteDB<C extends string> {
    * Retrieves a record from the specified collection by its ID.
    *
    * @param {string} collection - The name of the collection.
-   * @param {string} id - The unique identifier for the record.
+   * @param {object} {_id} - The unique identifier for the record.
    * @return {(DatabaseRowReturn<T> | null)} The retrieved record, or null if not found.
    */
   public read<T extends Schema>(
@@ -439,7 +456,6 @@ export class PetiteDB<C extends string> {
 
       if (this.autoCommit) {
         await this.commit();
-        await this.truncate(skipWAL);
       }
 
       return true;
@@ -482,8 +498,6 @@ export class PetiteDB<C extends string> {
 
       if (this.autoCommit) {
         await this.commit();
-
-        await this.truncate(skipWAL);
       }
 
       return true;
@@ -578,8 +592,6 @@ export class PetiteDB<C extends string> {
 
       if (this.autoCommit) {
         await this.commit();
-
-        await this.truncate(skipWAL);
       }
 
       return query._id;
@@ -704,6 +716,7 @@ export class PetiteDB<C extends string> {
    */
   async append(entry: WALEntry, skipWAL = false): Promise<void> {
     if (this.walLogPath && !skipWAL) {
+      this.logger.verbose("Append entry in WAL");
       const line = JSON.stringify(entry, replacer) + "\n";
       await appendFile(this.walLogPath, line, "utf8");
     }
@@ -714,6 +727,7 @@ export class PetiteDB<C extends string> {
    */
   async truncate(skipWAL = false): Promise<void> {
     if (this.walLogPath && !skipWAL) {
+      this.logger.verbose("Truncate WAL");
       await writeFile(this.walLogPath, "", "utf8");
     }
   }
@@ -741,8 +755,8 @@ export class PetiteDB<C extends string> {
           const entry = line as WALEntry;
           await apply(entry);
         } catch (err) {
-          console.error("Invalid WAL entry, skipping:", line);
-          console.error(err);
+          this.logger.error("Invalid WAL entry, skipping:", line);
+          this.logger.error(err);
         }
       }
     } catch (err) {
@@ -788,18 +802,21 @@ export class PetiteDB<C extends string> {
     };
   }
 
+  /**
+   * Clean shutdown of the database
+   */
   public async shutdown() {
-    console.log("[Shutdown] Flushing database before exit...");
+    this.logger.info("[Shutdown] Flushing database before exit...");
     try {
       if (this.autoCommit) {
         await this.flush();
-        console.log("[Shutdown] Flush complete.");
+        this.logger.info("[Shutdown] Flush complete.");
       }
     } catch (err) {
-      console.error("[Shutdown] Failed to flush database:", err);
+      this.logger.error("[Shutdown] Failed to flush database:", err);
     } finally {
-      console.log("[Shutdown] Complete");
-      Deno.exit();
+      this.logger.info("[Shutdown] Complete");
+      Deno.exit(0);
     }
   }
 
@@ -812,3 +829,5 @@ export class PetiteDB<C extends string> {
     }
   }
 }
+
+export default PetiteDB;

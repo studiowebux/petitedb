@@ -39,6 +39,7 @@
   - Version (increase when update and upsert)
 - Collection data is split into individual files.
 - Added simple indexing (by _id)
+- Added optional logging
 
 ---
 
@@ -46,7 +47,7 @@
 
 1. Install deno: https://deno.com
 2. `deno add @studiowebux/petitedb`
-3. `import { PetiteDB } from "@studiowebux/petitedb@^2.1.0";`
+3. `import { PetiteDB } from "@studiowebux/petitedb@^2.1.2";`
 
 >  Version 2.0.0+ has breaking changes.
 

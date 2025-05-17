@@ -14,7 +14,6 @@ const db = new PetiteDB<"people">("db/demo.json", {
   "autoCommit": true,
   "maxWritesBeforeFlush": 1000,
   "walLogPath": "wal/wal.log",
-  "watch": false,
 });
 
 await db.load();
