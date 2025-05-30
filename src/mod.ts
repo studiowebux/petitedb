@@ -8,11 +8,26 @@ import { JsonParseStream } from "@std/json";
 
 import Logger from "@studiowebux/deno-minilog";
 
+/**
+ * Lock type used within the database.
+ */
 export type LockType = "collection" | "row";
+
+/**
+ * Collection within a database schema.
+ */
 export type Collection = string;
+
+/**
+ * Database schema definition.
+ */
 // deno-lint-ignore no-explicit-any
 export type Schema = Record<string, any>;
 
+/**
+ * Meta information about the record.
+ * Not fully implemented.
+ */
 export type Meta = {
   pk?: string;
   sk?: string;
@@ -23,19 +38,45 @@ export type Meta = {
   version: string;
 };
 
+/**
+ * Meta information about a collection.
+ * Not fully implemented.
+ * Currently only the PK and SK are implemented
+ */
 export type Configuration = {
   pk: string;
   sk: string | null;
 };
 
+/**
+ * Represents a row within the database.
+ * @property {object} _doc - The document stored in this row.
+ */
 export type DatabaseRow = {
   record: Schema;
   _meta: Meta;
 };
+
+/**
+ * A promise representing a future value of a database row.
+ * @template T
+ * @extends Promise<T>
+ */
 export type DatabaseRowReturn<T> = DatabaseRow & { record: T & Schema };
+
+/**
+ * Enumeration of the types of data that can be stored in the database.
+ */
 export type DatabaseDataType = Record<Collection, DatabaseRow[]>;
+
+/**
+ * Enumeration of index types available for database operations.
+ */
 export type DatabaseIndexType = Record<Collection, Map<string, DatabaseRow>>;
 
+/**
+ * An entry representing a Write-Ahead Log (WAL) operation.
+ */
 export type WALEntry = {
   op: "insert" | "update" | "delete";
   collection: string;
@@ -44,9 +85,17 @@ export type WALEntry = {
   query?: Partial<Schema>;
 };
 
+/**
+ * Replacer function for JSON serialization to control how objects are converted into strings.
+ */
 const replacer = (_key: unknown, value: unknown): unknown =>
   typeof value === "bigint" ? value.toString() : value;
 
+/**
+ * Increment a hexadecimal version number by one.
+ * @param {string} hex - The current hexadecimal version number as a string.
+ * @returns {string} - The incremented hexadecimal version number.
+ */
 function incrementHexVersion(currentVersion: string) {
   const next = BigInt(`0x${currentVersion}`) + 1n;
   return next.toString(16); // return as hex string
@@ -141,6 +190,10 @@ export class PetiteDB<C extends string> {
     this.configurations = {};
   }
 
+  /**
+   * Creates a new database and initializes it with default settings.
+   * @returns {Promise<PetiteDB>} - A promise that resolves to the newly created PetiteDB instance.
+   */
   static async CreateDb<C extends string>(filePath: string, options?: {
     autoCommit?: boolean;
     walLogPath?: string;
@@ -155,17 +208,16 @@ export class PetiteDB<C extends string> {
   }
 
   /**
-   * Returns the in-memory data in JSON format
+   * Retrieves data from the database.
+   * @returns {Record<string, any>} - The in-memory representation of all data within the database.
    */
   public getData(): DatabaseDataType {
     return this.data;
   }
 
   /**
-   * Loads the database from the file system.
-   * Rebuild the WAL (if anything in it)
-   * Create database if empty
-   * Load the database configurations (PK,SK)
+   * Loads the existing database from disk into memory.
+   * @returns {Promise<void>}
    */
   public async load(): Promise<void> {
     if (this.memoryOnly === true) {
@@ -236,7 +288,8 @@ export class PetiteDB<C extends string> {
   }
 
   /**
-   * Commits the current state of the database to the file system after maxWritesBeforeFlush is reached.
+   * Commits current changes to the database and triggers a write operation if necessary.
+   * @returns {Promise<void>}
    */
   public commit(): Promise<void> {
     this.logger.verbose("Commit WAL");
@@ -255,7 +308,8 @@ export class PetiteDB<C extends string> {
   }
 
   /**
-   * Commits the current state of the database to the file system
+   * Flushes data from memory to disk, ensuring persistence.
+   * @returns {Promise<void>}
    */
   public async flush(): Promise<void> {
     this.logger.verbose("Flush WAL");
@@ -373,6 +427,7 @@ export class PetiteDB<C extends string> {
    *
    * @param {C} collection - The name of the collection.
    * @param {T[]} record - The data for the new record.
+   * @param {{skipWAL}} config - when skipWAL is enabled, it skips appending into the WAL file
    * @return {Promise<string[]>} new id
    */
   public async insertMany<T extends Schema>(
@@ -393,6 +448,7 @@ export class PetiteDB<C extends string> {
    *
    * @param {C} collection - The name of the collection.
    * @param {T} record - The data for the new record.
+   * @param {{skipWAL}} config - when skipWAL is enabled, it skips appending into the WAL file
    * @return {Promise<string>} new id
    */
   public async insertOne<T extends Schema>(
@@ -469,6 +525,7 @@ export class PetiteDB<C extends string> {
    * @param {string} collection - The name of the collection.
    * @param {Partial<T>} query - The unique identifier for the record.
    * @param {Partial<Schema>} record - The new data for the record (only updated fields).
+   * @param {{skipWAL}} config - when skipWAL is enabled, it skips appending into the WAL file
    * @return {boolean} True if the record was updated successfully, false otherwise.
    */
   public async updateOne<T extends Schema>(
@@ -543,10 +600,11 @@ export class PetiteDB<C extends string> {
   }
 
   /**
-   * Deletes first record from the specified collection using a query.
+   * Deletes first record found from the specified collection using a query.
    *
    * @param {string} collection - The name of the collection.
    * @param {string} id - The unique identifier for the record.
+   * @param {{skipWAL}} config - when skipWAL is enabled, it skips appending into the WAL file
    * @return {boolean} True if the record was deleted successfully, false otherwise.
    */
   public async deleteOne<T extends Schema>(
@@ -594,16 +652,18 @@ export class PetiteDB<C extends string> {
    * @param collection
    * @param query
    * @param key [default: id] - uses this key to delete the item
+   * @param {{skipWAL}} config - when skipWAL is enabled, it skips appending into the WAL file
    * @returns {number} number of item deleted
    */
   public async deleteMany<T extends Schema>(
     collection: C,
     query: Partial<T>,
+    { skipWAL }: { skipWAL?: boolean } = {},
   ): Promise<number> {
     const rows = this.find<T>(collection, query);
 
     for (const row of rows) {
-      await this.deleteOne(collection, { _id: row.record._id });
+      await this.deleteOne(collection, { _id: row.record._id }, { skipWAL });
     }
 
     return rows.length;
@@ -615,6 +675,8 @@ export class PetiteDB<C extends string> {
    * @param {string} collection - The name of the collection.
    * @param {string} id - The unique identifier for the record.
    * @param {Schema} record - The new data for the record.
+   * @param {{skipWAL}} config - when skipWAL is enabled, it skips appending into the WAL file
+   * @returns {Promise<string>} record id
    */
   public async upsert<T extends Schema>(
     collection: C,
