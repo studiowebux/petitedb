@@ -15,7 +15,6 @@ const db = new PetiteDB<"people">("db/demo.json", {
   "autoCommit": true,
   "maxWritesBeforeFlush": 100,
   "walLogPath": "wal/wal.log",
-  "watch": false,
 });
 
 await db.load();
@@ -23,7 +22,7 @@ await db.load();
 console.time("generator");
 await Promise.all(
   [...Array(2).keys()].map(async () => {
-    await db.create<Person>("people", {
+    await db.insertOne<Person>("people", {
       fullname: nameGenerator(),
       createdAt: new Date(),
       balance: 10_000_000_000n,
@@ -34,7 +33,7 @@ console.timeEnd("generator");
 
 console.time("Getters");
 
-const databaseDump = db.GetData();
+const databaseDump = db.getData();
 console.log("databaseDump", databaseDump);
 
 console.time("mutate on disk");

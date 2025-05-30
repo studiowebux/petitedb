@@ -17,29 +17,34 @@
 
 ## About
 
+- Ideal for test, offline applications and Proof-of-Concept
 - Manage data in memory
-- Store and load data securely to/from a JSON file
+- Store and load data to/from a JSON file
 - Uses Write-Ahead Logging (WAL) to increase performance
+- Collection data is split into individual files.
+- Configurable (see table below)ù
 - Core operations:
   - Create, update, upsert, delete records
+    - `insertOne` / `insertMany`
+    - `updateOne`
+    - `upsert`
+    - `deleteOne` / `deleteMany`
   - Drop Collection
-  - Count, Read, Read all and Find specific records
+    - `drop`
+  - Count
+    - `count`
   - Retrieve configurable amount of random records (`sample()`)
+    - `sample`
   - Snapshot and Clear data
-  - Retrieve the raw data using `GetData`
-  - Option to automatically add a `_id` per record
-  - Option to manually commit the data to disk
-  - Option for In-Memory Only
+    - `getData` 
+    - `clear`
   - Support Typescript Types: _Data_ (`Schema`) and _Collections_ (`string`)
-- Ideal for test, offline applications and Proof-of-Concept
 - Support Saving BigInt in JSON file
-- Added `_meta` object for each record (not implemented)
+- Added `_meta` object for each record (not fully implemented)
   - createdAt
   - updatedAt
   - Version (increase when update and upsert)
-- Collection data is split into individual files.
 - Added simple indexing (by _id)
-- Added optional logging
 
 ---
 
@@ -49,7 +54,7 @@
 2. `deno add @studiowebux/petitedb`
 3. `import { PetiteDB } from "@studiowebux/petitedb@^2.1.2";`
 
->  Version 2.0.0+ has breaking changes.
+>  Version 2.2.0+ has breaking changes.
 
 **Example:**
 
@@ -60,10 +65,18 @@ see `demo/` directory, there are many examples.
 ```ts
 const db = new PetiteDB(...);
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    Deno.addSignalListener(signal, db.shutdown);
-}
+await db.shutdown()
 ```
+
+**Options**
+
+| Parameter            | Description                                                                                 | Default            |
+| -------------------- | ------------------------------------------------------------------------------------------- | ------------------ |
+| autoCommit           | If true, the database will be commited automatically when `maxWritesBeforeFlush` is reached | `true`             |
+| walLogPath           |  WAL File name                                                                              |  `db_name.wal.log` |
+| maxWritesBeforeFlush |   Number of entries to store in the WAL before saving on-disk                               |  `100`             |
+| memoryOnly           |  Ephemeral DB only                                                                          |  `false`           |
+| verbose              |  Enables all log levels                                                                     |  `false`           |
 
 ---
 

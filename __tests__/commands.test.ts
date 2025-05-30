@@ -21,38 +21,38 @@ const db = new PetiteDB("results/database.json", {
 await db.load();
 
 Deno.test("Create record", async () => {
-  const id = await db.create("category", { name: "Shoe" });
-  assertObjectMatch(db.read("category", { _id: id })!.record, { name: "Shoe" });
+  const id = await db.insertOne("category", { name: "Shoe" });
+  assertObjectMatch(db.findOne("category", { _id: id })!.record, { name: "Shoe" });
 });
 
 Deno.test("Upsert record", async () => {
-  const id = await db.create("category", { name: "Shoe" });
-  await db.upsert("category", { _id: id }, { name: "shoes" });
-  assertObjectMatch(db.read("category", { _id: id })!.record, {
+  const id = await db.insertOne("category", { name: "Shoe" });
+  await db.upsert<{_id?: string, name: string}>("category", { _id: id }, { name: "shoes" });
+  assertObjectMatch(db.findOne("category", { _id: id })!.record, {
     name: "shoes",
   });
 });
 
 Deno.test("Upsert second record", async () => {
-  const id = await db.upsert("category", { _id: "inexisting" }, {
+  const id = await db.upsert<{_id?: string, name: string}>("category", { _id: "inexisting" }, {
     name: "Hats",
   });
-  assertObjectMatch(db.read("category", { _id: id })!.record, {
+  assertObjectMatch(db.findOne("category", { _id: id })!.record, {
     name: "Hats",
   });
 });
 
 Deno.test("Update record", async () => {
-  const id = await db.create("category", { name: "Shoe" });
-  await db.update("category", { _id: id }, { name: "Shoes" });
-  assertObjectMatch(db.read("category", { _id: id })!.record, {
+  const id = await db.insertOne("category", { name: "Shoe" });
+  await db.updateOne<{_id?: string, name: string}>("category", { _id: id }, { name: "Shoes" });
+  assertObjectMatch(db.findOne("category", { _id: id })!.record, {
     name: "Shoes",
   });
 });
 
 Deno.test("Read record", async () => {
-  const id = await db.create("category", { name: "Shoe" });
-  assertObjectMatch(db.read("category", { _id: id })!.record, { name: "Shoe" });
+  const id = await db.insertOne("category", { name: "Shoe" });
+  assertObjectMatch(db.findOne("category", { _id: id })!.record, { name: "Shoe" });
 });
 
 Deno.test("Find record", () => {
@@ -63,17 +63,17 @@ Deno.test("Find record", () => {
 });
 
 Deno.test("Delete record", async () => {
-  const id = await db.create("category", { name: "Shoe" });
-  const id1 = await db.create("category", { name: "Hats" });
-  await db.delete("category", id);
-  assertEquals(db.read("category", { _id: id }), null);
-  assertObjectMatch(db.read("category", { _id: id1 })!.record, {
+  const id = await db.insertOne("category", { name: "Shoe" });
+  const id1 = await db.insertOne("category", { name: "Hats" });
+  await db.deleteOne<{_id?: string, name: string}>("category", {_id: id});
+  assertEquals(db.findOne("category", { _id: id }), undefined);
+  assertObjectMatch(db.findOne("category", { _id: id1 })!.record, {
     name: "Hats",
   });
 });
 
 Deno.test("Read all record", () => {
-  assertEquals(db.readAll("category").length, 7);
+  assertEquals(db.find("category").length, 6);
 });
 
 Deno.test("Create and Read with auto id", async () => {
@@ -81,10 +81,10 @@ Deno.test("Create and Read with auto id", async () => {
     autoCommit: true,
   });
   await db1.load();
-  await db1.create("movies", { title: "test 1" });
-  await db1.create("movies", { title: "test 2" });
-  await db1.create("movies", { title: "test 3" });
-  assertEquals(db1.readAll("movies")?.length, 3);
+  await db1.insertOne("movies", { title: "test 1" });
+  await db1.insertOne("movies", { title: "test 2" });
+  await db1.insertOne("movies", { title: "test 3" });
+  assertEquals(db1.find("movies")?.length, 3);
 });
 
 Deno.test("Create 100 entries", async () => {
@@ -94,10 +94,10 @@ Deno.test("Create 100 entries", async () => {
   await db1.load();
   await Promise.all(
     [...Array(100).keys()].map(async (i) =>
-      await db1.create("moviesCC", { title: `test ${i}` })
+      await db1.insertOne("moviesCC", { title: `test ${i}` })
     ),
   );
-  assertEquals(db1.readAll("moviesCC")?.length, 100);
+  assertEquals(db1.find("moviesCC")?.length, 100);
 });
 
 Deno.test("Create 500 entries", async () => {
@@ -107,10 +107,10 @@ Deno.test("Create 500 entries", async () => {
   await db1.load();
   await Promise.all(
     [...Array(500).keys()].map(async (i) =>
-      await db1.create("moviesCC", { title: `test ${i}` })
+      await db1.insertOne("moviesCC", { title: `test ${i}` })
     ),
   );
-  assertEquals(db1.readAll("moviesCC")?.length, 500);
+  assertEquals(db1.find("moviesCC")?.length, 500);
 });
 
 Deno.test("Create 1000 entries", async () => {
@@ -119,11 +119,11 @@ Deno.test("Create 1000 entries", async () => {
   });
   await db1.load();
   await Promise.all(
-    [...Array(1000).keys()].map(async (i) =>
-      await db1.create("moviesCC", { title: `test ${i}` })
+    [...Array(1000).keys()].map((i) =>
+      db1.insertOne("moviesCC", { title: `test ${i}` })
     ),
   );
-  assertEquals(db1.readAll("moviesCC")?.length, 1000);
+  assertEquals(db1.find("moviesCC")?.length, 1000);
 });
 
 Deno.test("Create 10000 entries", async () => {
@@ -132,11 +132,11 @@ Deno.test("Create 10000 entries", async () => {
   });
   await db1.load();
   await Promise.all(
-    [...Array(10000).keys()].map(async (i) =>
-      await db1.create("moviesCC", { title: `test ${i}` })
+    [...Array(10000).keys()].map((i) =>
+      db1.insertOne("moviesCC", { title: `test ${i}` })
     ),
   );
-  assertEquals(db1.readAll("moviesCC")?.length, 10000);
+  assertEquals(db1.find("moviesCC")?.length, 10000);
 });
 
 Deno.test("Read all 10000 entries", async () => {
@@ -144,16 +144,16 @@ Deno.test("Read all 10000 entries", async () => {
     autoCommit: true,
   });
   await db1.load();
-  assertEquals(db1.readAll("moviesCC")?.length, 10000);
+  assertEquals(db1.find("moviesCC")?.length, 10000);
 });
 
 Deno.test("Create database and clear", async () => {
   const db1 = new PetiteDB<"movies">("results/clear.json");
   await db1.load();
-  await db1.create("movies", { title: "test 1" });
-  await db1.create("movies", { title: "test 2" });
-  await db1.create("movies", { title: "test 3" });
-  assertEquals(db1.readAll("movies")?.length, 3);
+  await db1.insertOne("movies", { title: "test 1" });
+  await db1.insertOne("movies", { title: "test 2" });
+  await db1.insertOne("movies", { title: "test 3" });
+  assertEquals(db1.find("movies")?.length, 3);
   await db1.clear();
   assertEquals(db1.GetData(), {});
 });
@@ -172,10 +172,10 @@ Deno.test(
     await db1.load();
     await Promise.all(
       [...Array(10000).keys()].map(async (i) =>
-        await db1.create("moviesCC", { title: `test ${i}` })
+        await db1.insertOne("moviesCC", { title: `test ${i}` })
       ),
     );
-    assertEquals(db1.readAll("moviesCC")?.length, 10000);
+    assertEquals(db1.find("moviesCC")?.length, 10000);
   },
 );
 
@@ -188,10 +188,10 @@ Deno.test(
     await db1.load();
     await Promise.all(
       [...Array(10000).keys()].map(async (i) =>
-        await db1.create("moviesCC", { title: `test ${i}` })
+        await db1.insertOne("moviesCC", { title: `test ${i}` })
       ),
     );
-    assertEquals(db1.readAll("moviesCC")?.length, 10000);
+    assertEquals(db1.find("moviesCC")?.length, 10000);
     await db1.flush();
   },
 );

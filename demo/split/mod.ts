@@ -17,7 +17,6 @@ const db = new PetiteDB<"people" | "weather">("db/demo.json", {
   "autoCommit": true,
   "maxWritesBeforeFlush": 100,
   "walLogPath": "wal/wal.log",
-  "watch": false,
   "memoryOnly": false,
 });
 
@@ -27,7 +26,7 @@ console.time("generator");
 await Promise.all([
   Promise.all(
     [...Array(1000).keys()].map(async () => {
-      await db.create<Person>("people", {
+      await db.insertOne<Person>("people", {
         fullname: nameGenerator(),
         createdAt: new Date(),
       });
@@ -35,7 +34,7 @@ await Promise.all([
   ),
   Promise.all(
     [...Array(1000).keys()].map(async () => {
-      await db.create<Weather>("weather", {
+      await db.insertOne<Weather>("weather", {
         temp: Math.random() * 10,
         createdAt: new Date(),
       });

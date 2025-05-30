@@ -21,7 +21,7 @@ await db.load();
 console.time("generator");
 await Promise.all(
   [...Array(10_000).keys()].map(async () => {
-    await db.create<Person>("people", {
+    await db.insertOne<Person>("people", {
       fullname: nameGenerator(),
       createdAt: new Date(),
     });

@@ -9,18 +9,16 @@ const db = new PetiteDB<Collections>("types.db.json", {
 
 await db.load();
 
-const id = await db.create("reload", { ts: new Date().getTime() });
-const result = db.read<{ ts: number }>("reload", { _id: id });
-console.log(id, result?.record.ts);
+const id = await db.insertOne("reload", { ts: new Date().getTime() });
+const result = db.findOne<{ _id?: string, ts: number }>("reload", { _id: id });
 
-const id1 = await db.create("configs", {
+const id1 = await db.insertOne("configs", {
   ts: new Date().getTime(),
   enabled: false,
 });
-const result1 = db.read<{ ts: number; enabled: boolean }>("configs", {
+const result1 = db.findOne<{ _id?: string, ts: number; enabled: boolean }>("configs", {
   _id: id1,
 });
-console.log(id1, result1?.record.ts, result1?.record.enabled);
 
 function timeout(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

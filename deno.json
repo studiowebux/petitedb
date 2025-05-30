@@ -1,6 +1,6 @@
 {
   "name": "@studiowebux/petitedb",
-  "version": "2.1.3",
+  "version": "2.2.0",
   "exports": "./src/mod.ts",
   "publish": {
     "include": ["LICENSE", "README.md", "src/**/*.ts"],
@@ -14,5 +14,8 @@
   },
   "test": {
     "exclude": ["./__tests__/*.local.ts"]
+  },
+  "tasks": {
+    "test": "rm -rf wal/ && rm -rf results/*.json && deno test -A"
   }
 }

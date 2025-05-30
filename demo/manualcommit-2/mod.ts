@@ -9,7 +9,6 @@ const db = new PetiteDB<"people">("db/demo.json", {
   "autoCommit": false,
   "maxWritesBeforeFlush": 100,
   "walLogPath": "wal/wal.log",
-  "watch": false,
 });
 
 await db.load();
@@ -17,7 +16,7 @@ await db.load();
 console.time("generator");
 await Promise.all(
   [...Array(10_000).keys()].map(async () => {
-    await db.create("people", {
+    await db.insertOne("people", {
       fullname: nameGenerator(),
       createdAt: new Date(),
     });
