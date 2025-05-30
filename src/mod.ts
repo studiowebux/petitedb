@@ -731,10 +731,19 @@ export class PetiteDB<C extends string> {
         },
         record: data,
       };
+
+      this.logger.verbose("PK", this.configurations[collection]?.pk);
+      this.logger.verbose("SK", this.configurations[collection]?.sk);
+      const pkKey = this.configurations[collection]?.pk;
+      const skKey = this.configurations[collection]?.sk;
+
       this.index[collection].set(existingRecord!.record._id, input);
       const index = this.data[collection].findIndex((row) =>
-        row.record._id === query._id
+        row.record._id === query._id ||
+        (pkKey && row.record[pkKey] === record[pkKey] &&
+          (skKey && row.record[skKey] === record[skKey] || !skKey))
       );
+
       this.data[collection][index] = input;
 
       if (this.autoCommit) {
@@ -952,7 +961,7 @@ export class PetiteDB<C extends string> {
         case "update":
           await db.updateOne(
             entry.collection as C,
-            { _id: entry.query!._id },
+            entry.query!,
             entry.data!,
             { skipWAL: true },
           );

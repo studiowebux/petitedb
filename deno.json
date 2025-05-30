@@ -1,6 +1,6 @@
 {
   "name": "@studiowebux/petitedb",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "exports": "./src/mod.ts",
   "publish": {
     "include": ["LICENSE", "README.md", "src/**/*.ts"],
