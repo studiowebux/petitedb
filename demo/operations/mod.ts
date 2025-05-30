@@ -67,7 +67,9 @@ const id = await db.insertOne<Person>("people", {
 });
 console.log("Created", db.findOne<Person>("people", { _id: id }));
 
-await db.updateOne<Person>("people", { _id: id }, { fullname: `${fullname} II` });
+await db.updateOne<Person>("people", { _id: id }, {
+  fullname: `${fullname} II`,
+});
 console.log("Updated", db.findOne<Person>("people", { _id: id }));
 
 await db.upsert<Person>("people", { _id: id }, {

@@ -11,11 +11,11 @@ Deno.test("Create record", async () => {
   await db.insertOne("items", { category: "shoe", name: "Shoe 5" });
   await db.insertOne("items", { category: "shoe", name: "Shoe 6" });
 
-  const samples = db.sample("items", { category: "shoe" }, 3);
-  const sample = db.sample("items", { category: "shoe" }, 1);
-  const invalid = db.sample("items", { category: "shoe" }, 7);
-  const inexistant = db.sample("items", { category: "hat" }, 1);
-  const inexistants = db.sample("items", { category: "hat" }, 3);
+  db.sample("items", { category: "shoe" }, 3);
+  db.sample("items", { category: "shoe" }, 1);
+  db.sample("items", { category: "shoe" }, 7);
+  db.sample("items", { category: "hat" }, 1);
+  db.sample("items", { category: "hat" }, 3);
 
   // console.log(samples);
   // console.log(sample);

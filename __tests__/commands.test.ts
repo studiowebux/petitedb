@@ -22,19 +22,25 @@ await db.load();
 
 Deno.test("Create record", async () => {
   const id = await db.insertOne("category", { name: "Shoe" });
-  assertObjectMatch(db.findOne("category", { _id: id })!.record, { name: "Shoe" });
+  assertObjectMatch(db.findOne("category", { _id: id })!.record, {
+    name: "Shoe",
+  });
 });
 
 Deno.test("Upsert record", async () => {
   const id = await db.insertOne("category", { name: "Shoe" });
-  await db.upsert<{_id?: string, name: string}>("category", { _id: id }, { name: "shoes" });
+  await db.upsert<{ _id?: string; name: string }>("category", { _id: id }, {
+    name: "shoes",
+  });
   assertObjectMatch(db.findOne("category", { _id: id })!.record, {
     name: "shoes",
   });
 });
 
 Deno.test("Upsert second record", async () => {
-  const id = await db.upsert<{_id?: string, name: string}>("category", { _id: "inexisting" }, {
+  const id = await db.upsert<{ _id?: string; name: string }>("category", {
+    _id: "inexisting",
+  }, {
     name: "Hats",
   });
   assertObjectMatch(db.findOne("category", { _id: id })!.record, {
@@ -44,7 +50,9 @@ Deno.test("Upsert second record", async () => {
 
 Deno.test("Update record", async () => {
   const id = await db.insertOne("category", { name: "Shoe" });
-  await db.updateOne<{_id?: string, name: string}>("category", { _id: id }, { name: "Shoes" });
+  await db.updateOne<{ _id?: string; name: string }>("category", { _id: id }, {
+    name: "Shoes",
+  });
   assertObjectMatch(db.findOne("category", { _id: id })!.record, {
     name: "Shoes",
   });
@@ -52,7 +60,9 @@ Deno.test("Update record", async () => {
 
 Deno.test("Read record", async () => {
   const id = await db.insertOne("category", { name: "Shoe" });
-  assertObjectMatch(db.findOne("category", { _id: id })!.record, { name: "Shoe" });
+  assertObjectMatch(db.findOne("category", { _id: id })!.record, {
+    name: "Shoe",
+  });
 });
 
 Deno.test("Find record", () => {
@@ -65,7 +75,7 @@ Deno.test("Find record", () => {
 Deno.test("Delete record", async () => {
   const id = await db.insertOne("category", { name: "Shoe" });
   const id1 = await db.insertOne("category", { name: "Hats" });
-  await db.deleteOne<{_id?: string, name: string}>("category", {_id: id});
+  await db.deleteOne<{ _id?: string; name: string }>("category", { _id: id });
   assertEquals(db.findOne("category", { _id: id }), undefined);
   assertObjectMatch(db.findOne("category", { _id: id1 })!.record, {
     name: "Hats",
@@ -155,7 +165,7 @@ Deno.test("Create database and clear", async () => {
   await db1.insertOne("movies", { title: "test 3" });
   assertEquals(db1.find("movies")?.length, 3);
   await db1.clear();
-  assertEquals(db1.GetData(), {});
+  assertEquals(db1.getData(), {});
 });
 
 Deno.test(

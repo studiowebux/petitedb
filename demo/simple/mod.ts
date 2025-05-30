@@ -2,7 +2,7 @@ import { PetiteDB } from "../../src/mod.ts";
 import { nameGenerator } from "../data.ts";
 
 type Person = {
-  _id?: string
+  _id?: string;
   fullname: string;
   createdAt: Date;
 };

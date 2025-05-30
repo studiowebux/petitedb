@@ -36,7 +36,7 @@
   - Retrieve configurable amount of random records (`sample()`)
     - `sample`
   - Snapshot and Clear data
-    - `getData` 
+    - `getData`
     - `clear`
   - Support Typescript Types: _Data_ (`Schema`) and _Collections_ (`string`)
 - Support Saving BigInt in JSON file
@@ -70,13 +70,13 @@ await db.shutdown()
 
 **Options**
 
-| Parameter            | Description                                                                                 | Default            |
-| -------------------- | ------------------------------------------------------------------------------------------- | ------------------ |
-| autoCommit           | If true, the database will be commited automatically when `maxWritesBeforeFlush` is reached | `true`             |
-| walLogPath           |  WAL File name                                                                              |  `db_name.wal.log` |
-| maxWritesBeforeFlush |   Number of entries to store in the WAL before saving on-disk                               |  `100`             |
-| memoryOnly           |  Ephemeral DB only                                                                          |  `false`           |
-| verbose              |  Enables all log levels                                                                     |  `false`           |
+| Parameter            | Description                                                                                 | Default           |
+| -------------------- | ------------------------------------------------------------------------------------------- | ----------------- |
+| autoCommit           | If true, the database will be commited automatically when `maxWritesBeforeFlush` is reached | `true`            |
+| walLogPath           |  WAL File name                                                                              | `db_name.wal.log` |
+| maxWritesBeforeFlush |   Number of entries to store in the WAL before saving on-disk                               | `100`             |
+| memoryOnly           |  Ephemeral DB only                                                                          | `false`           |
+| verbose              |  Enables all log levels                                                                     | `false`           |
 
 ---
 
