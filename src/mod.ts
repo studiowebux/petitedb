@@ -327,6 +327,7 @@ export class PetiteDB<C extends string> {
         }.${collection}.json`;
         const tmp = await Deno.makeTempFile({
           prefix: `petitedb-${collection}`,
+          dir: Deno.env.get("TMP_DIR") || "/tmp",
         });
         // FIXME: Next optimization is to get rid of JSON format; cause it increases considerably the time to write on-disk
         // The reason of this project is to allow an easy and intuitive way to view and edit json data for a POC.
@@ -357,6 +358,7 @@ export class PetiteDB<C extends string> {
   ) {
     const tmpCollectionConfigurations = await Deno.makeTempFile({
       prefix: `petitedb-configs`,
+      dir: Deno.env.get("TMP_DIR") || "/tmp",
     });
     await Deno.writeTextFile(
       tmpCollectionConfigurations,
